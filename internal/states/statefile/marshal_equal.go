@@ -18,7 +18,6 @@ import (
 // outputs.
 func StatesMarshalEqual(a, b *states.State) bool {
 	var aBuf bytes.Buffer
-	var bBuf bytes.Buffer
 
 	// nil states are not valid states, and so they can never martial equal.
 	if a == nil || b == nil {
@@ -28,12 +27,15 @@ func StatesMarshalEqual(a, b *states.State) bool {
 	// We write here some temporary files that have no header information
 	// populated, thus ensuring that we're only comparing the state itself
 	// and not any metadata.
-	err := Write(&File{State: a}, &aBuf)
+	err := WriteStateV4(&File{State: a}, &aBuf)
 	if err != nil {
 		// Should never happen, because we're writing to an in-memory buffer
 		panic(err)
 	}
-	err = Write(&File{State: b}, &bBuf)
+
+	buf := make([]byte, 0, aBuf.Cap())
+	bBuf := bytes.NewBuffer(buf)
+	err = WriteStateV4(&File{State: b}, bBuf)
 	if err != nil {
 		// Should never happen, because we're writing to an in-memory buffer
 		panic(err)

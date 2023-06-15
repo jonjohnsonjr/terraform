@@ -9,8 +9,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 
 	"github.com/hashicorp/go-plugin"
@@ -58,7 +60,25 @@ func init() {
 }
 
 func main() {
-	os.Exit(realMain())
+	file, err := os.CreateTemp("", "mane-pprof")
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("pprof to %s", file.Name())
+
+	pprof.StartCPUProfile(file)
+
+	i := realMain()
+	pprof.StopCPUProfile()
+
+	cmd := exec.Command("go", "tool", "pprof", "-http=:", file.Name())
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
+	os.Exit(i)
 }
 
 func realMain() int {

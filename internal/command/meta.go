@@ -21,6 +21,12 @@ import (
 	"github.com/hashicorp/terraform-svchost/disco"
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/backend"
@@ -434,7 +440,39 @@ func (m *Meta) RunOperation(b backend.Enhanced, opReq *backend.Operation) (*back
 		opReq.ConfigDir = m.normalizePath(opReq.ConfigDir)
 	}
 
-	op, err := b.Operation(context.Background(), opReq)
+	r, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("terraform"),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+
+	client := otlptracehttp.NewClient()
+	exporter, err := otlptrace.New(ctx, client)
+	if err != nil {
+		log.Fatalf("creating OTLP trace exporter: %v", err)
+	}
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(exporter),
+		trace.WithResource(r),
+	)
+	otel.SetTracerProvider(tp)
+	defer func() {
+		if err := tp.Shutdown(ctx); err != nil {
+			log.Fatalf("trace provider shutdown: %v", err)
+		}
+	}()
+
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "apply")
+	defer span.End()
+
+	op, err := b.Operation(ctx, opReq)
 	if err != nil {
 		return nil, fmt.Errorf("error starting operation: %s", err)
 	}

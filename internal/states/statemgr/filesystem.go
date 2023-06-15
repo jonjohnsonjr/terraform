@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/states/statefile"
 	"github.com/hashicorp/terraform/internal/terraform"
+	tfversion "github.com/hashicorp/terraform/version"
 )
 
 // Filesystem is a full state manager that uses a file in the local filesystem
@@ -216,7 +217,13 @@ func (s *Filesystem) writeState(state *states.State, meta *SnapshotMeta) error {
 	}
 
 	log.Printf("[TRACE] statemgr.Filesystem: writing snapshot at %s", s.path)
-	if err := statefile.Write(s.file, s.stateFileOut); err != nil {
+	// if err := statefile.Write(s.file, s.stateFileOut); err != nil {
+	// 	return err
+	// }
+	// Always record the current terraform version in the state.
+	s.file.TerraformVersion = tfversion.SemVer
+
+	if err := statefile.WriteStateV4(s.file, s.stateFileOut).Err(); err != nil {
 		return err
 	}
 

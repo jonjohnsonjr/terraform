@@ -4,10 +4,12 @@
 package statefile
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/goccy/go-json"
 
 	version "github.com/hashicorp/go-version"
 	"github.com/zclconf/go-cty/cty"
@@ -310,8 +312,12 @@ func prepareStateV4(sV4 *stateV4) (*File, tfdiags.Diagnostics) {
 	file.State = state
 	return file, diags
 }
-
 func writeStateV4(file *File, w io.Writer) tfdiags.Diagnostics {
+	return WriteStateV4(file, w)
+}
+
+func WriteStateV4(file *File, w io.Writer) tfdiags.Diagnostics {
+	bw := bufio.NewWriter(w)
 	// Here we'll convert back from the "File" representation to our
 	// stateV4 struct representation and write that.
 	//
@@ -421,8 +427,7 @@ func writeStateV4(file *File, w io.Writer) tfdiags.Diagnostics {
 
 	sV4.normalize()
 
-	src, err := json.MarshalIndent(sV4, "", "  ")
-	if err != nil {
+	if err := json.NewEncoder(bw).Encode(sV4); err != nil {
 		// Shouldn't happen if we do our conversion to *stateV4 correctly above.
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
@@ -431,10 +436,16 @@ func writeStateV4(file *File, w io.Writer) tfdiags.Diagnostics {
 		))
 		return diags
 	}
-	src = append(src, '\n')
 
-	_, err = w.Write(src)
-	if err != nil {
+	if _, err := bw.Write([]byte("\n")); err != nil {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"Failed to write state",
+			fmt.Sprintf("An error occured while writing the serialized state: %s.", err),
+		))
+		return diags
+	}
+	if err := bw.Flush(); err != nil {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
 			"Failed to write state",

@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -22,7 +23,7 @@ type GraphCommand struct {
 	Meta
 }
 
-func (c *GraphCommand) Run(args []string) int {
+func (c *GraphCommand) Run(ctx context.Context, args []string) int {
 	var drawCycles bool
 	var graphTypeStr string
 	var moduleDepth int
@@ -147,7 +148,7 @@ func (c *GraphCommand) Run(args []string) int {
 			}
 		}
 
-		g, graphDiags = lr.Core.ApplyGraphForUI(plan, lr.Config)
+		g, graphDiags = lr.Core.ApplyGraphForUI(ctx, plan, lr.Config)
 	case "eval", "validate":
 		// Terraform v0.12 through v1.0 supported both of these, but the
 		// graph variants for "eval" and "validate" are purely implementation

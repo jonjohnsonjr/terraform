@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -26,7 +27,7 @@ type ShowCommand struct {
 	Meta
 }
 
-func (c *ShowCommand) Run(rawArgs []string) int {
+func (c *ShowCommand) Run(ctx context.Context, rawArgs []string) int {
 	// Parse and apply global view arguments
 	common, rawArgs := arguments.ParseView(rawArgs)
 	c.View.Configure(common)

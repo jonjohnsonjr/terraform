@@ -4,13 +4,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 
 	"github.com/hashicorp/go-plugin"
@@ -26,6 +29,12 @@ import (
 	"github.com/mattn/go-shellwords"
 	"github.com/mitchellh/cli"
 	"github.com/mitchellh/colorstring"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 
 	backendInit "github.com/hashicorp/terraform/internal/backend/init"
 )
@@ -58,10 +67,61 @@ func init() {
 }
 
 func main() {
-	os.Exit(realMain())
+	ctx := context.Background()
+
+	file, err := os.CreateTemp("", "mane-pprof")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pprof.StartCPUProfile(file)
+
+	cmd := exec.CommandContext(ctx, "go", "tool", "pprof", "-http=:", file.Name())
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	client := otlptracehttp.NewClient()
+	exporter, err := otlptrace.New(ctx, client)
+	if err != nil {
+		log.Fatalf("creating OTLP trace exporter: %v", err)
+	}
+	r, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("terraform"),
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(exporter),
+		trace.WithResource(r),
+	)
+	otel.SetTracerProvider(tp)
+
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "main")
+
+	ret := realMain(ctx)
+
+	pprof.StopCPUProfile()
+	span.End()
+
+	if err := tp.Shutdown(ctx); err != nil {
+		log.Fatalf("trace provider shutdown: %v", err)
+	}
+
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	}
+
+	os.Exit(ret)
 }
 
-func realMain() int {
+func realMain(ctx context.Context) int {
 	defer logging.PanicHandler()
 
 	var err error
@@ -315,7 +375,7 @@ func realMain() int {
 		}
 	}
 
-	exitCode, err := cliRunner.Run()
+	exitCode, err := cliRunner.Run(ctx)
 	if err != nil {
 		Ui.Error(fmt.Sprintf("Error executing CLI: %s", err.Error()))
 		return 1

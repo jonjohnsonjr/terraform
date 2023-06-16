@@ -5,6 +5,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 
@@ -18,7 +19,7 @@ type StatePullCommand struct {
 	StateMeta
 }
 
-func (c *StatePullCommand) Run(args []string) int {
+func (c *StatePullCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("state pull")
 	if err := cmdFlags.Parse(args); err != nil {

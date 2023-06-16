@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -16,7 +17,7 @@ type GetCommand struct {
 	Meta
 }
 
-func (c *GetCommand) Run(args []string) int {
+func (c *GetCommand) Run(ctx context.Context, args []string) int {
 	var update bool
 
 	args = c.Meta.process(args)

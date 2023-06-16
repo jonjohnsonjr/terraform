@@ -5,6 +5,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -39,7 +40,7 @@ type FmtCommand struct {
 	input     io.Reader // STDIN if nil
 }
 
-func (c *FmtCommand) Run(args []string) int {
+func (c *FmtCommand) Run(ctx context.Context, args []string) int {
 	if c.input == nil {
 		c.input = os.Stdin
 	}

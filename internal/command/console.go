@@ -5,6 +5,7 @@ package command
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -25,7 +26,7 @@ type ConsoleCommand struct {
 	Meta
 }
 
-func (c *ConsoleCommand) Run(args []string) int {
+func (c *ConsoleCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.extendedFlagSet("console")
 	cmdFlags.StringVar(&c.Meta.statePath, "state", DefaultStateFilename, "path")
@@ -132,7 +133,7 @@ func (c *ConsoleCommand) Run(args []string) int {
 	// Before we can evaluate expressions, we must compute and populate any
 	// derived values (input variables, local values, output values)
 	// that are not stored in the persistent state.
-	scope, scopeDiags := lr.Core.Eval(lr.Config, lr.InputState, addrs.RootModuleInstance, evalOpts)
+	scope, scopeDiags := lr.Core.Eval(ctx, lr.Config, lr.InputState, addrs.RootModuleInstance, evalOpts)
 	diags = diags.Append(scopeDiags)
 	if scope == nil {
 		// scope is nil if there are errors so bad that we can't even build a scope.

@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/terraform/internal/command/jsonfunction"
@@ -29,7 +30,7 @@ func (c *MetadataFunctionsCommand) Synopsis() string {
 	return "Show signatures and descriptions for the available functions"
 }
 
-func (c *MetadataFunctionsCommand) Run(args []string) int {
+func (c *MetadataFunctionsCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("metadata functions")
 	var jsonOutput bool

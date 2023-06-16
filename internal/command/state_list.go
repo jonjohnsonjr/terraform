@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -20,7 +21,7 @@ type StateListCommand struct {
 	StateMeta
 }
 
-func (c *StateListCommand) Run(args []string) int {
+func (c *StateListCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	var statePath string
 	cmdFlags := c.Meta.defaultFlagSet("state list")

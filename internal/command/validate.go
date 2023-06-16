@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ type ValidateCommand struct {
 	Meta
 }
 
-func (c *ValidateCommand) Run(rawArgs []string) int {
+func (c *ValidateCommand) Run(ctx context.Context, rawArgs []string) int {
 	// Parse and apply global view arguments
 	common, rawArgs := arguments.ParseView(rawArgs)
 	c.View.Configure(common)
@@ -52,7 +53,7 @@ func (c *ValidateCommand) Run(rawArgs []string) int {
 		return view.Results(diags)
 	}
 
-	validateDiags := c.validate(dir)
+	validateDiags := c.validate(ctx, dir)
 	diags = diags.Append(validateDiags)
 
 	// Validating with dev overrides in effect means that the result might
@@ -64,7 +65,7 @@ func (c *ValidateCommand) Run(rawArgs []string) int {
 	return view.Results(diags)
 }
 
-func (c *ValidateCommand) validate(dir string) tfdiags.Diagnostics {
+func (c *ValidateCommand) validate(ctx context.Context, dir string) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
 	cfg, cfgDiags := c.loadConfig(dir)
@@ -86,7 +87,7 @@ func (c *ValidateCommand) validate(dir string) tfdiags.Diagnostics {
 		return diags
 	}
 
-	validateDiags := tfCtx.Validate(cfg)
+	validateDiags := tfCtx.Validate(ctx, cfg)
 	diags = diags.Append(validateDiags)
 	return diags
 }

@@ -5,6 +5,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 
@@ -17,7 +18,7 @@ type WorkspaceListCommand struct {
 	LegacyName bool
 }
 
-func (c *WorkspaceListCommand) Run(args []string) int {
+func (c *WorkspaceListCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	envCommandShowWarning(c.Ui, c.LegacyName)
 

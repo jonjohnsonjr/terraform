@@ -21,7 +21,7 @@ type UnlockCommand struct {
 	Meta
 }
 
-func (c *UnlockCommand) Run(args []string) int {
+func (c *UnlockCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	var force bool
 	cmdFlags := c.Meta.defaultFlagSet("force-unlock")

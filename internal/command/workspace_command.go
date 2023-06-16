@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"net/url"
 	"strings"
 
@@ -17,7 +18,7 @@ type WorkspaceCommand struct {
 	LegacyName bool
 }
 
-func (c *WorkspaceCommand) Run(args []string) int {
+func (c *WorkspaceCommand) Run(ctx context.Context, args []string) int {
 	c.Meta.process(args)
 	envCommandShowWarning(c.Ui, c.LegacyName)
 

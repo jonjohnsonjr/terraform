@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -21,7 +22,7 @@ type StateRmCommand struct {
 	StateMeta
 }
 
-func (c *StateRmCommand) Run(args []string) int {
+func (c *StateRmCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	var dryRun bool
 	cmdFlags := c.Meta.ignoreRemoteVersionFlagSet("state rm")

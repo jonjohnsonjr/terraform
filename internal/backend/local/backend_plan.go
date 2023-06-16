@@ -77,7 +77,8 @@ func (b *Local) opPlan(
 	}
 
 	// Get our context
-	lr, configSnap, opState, ctxDiags := b.localRun(op)
+	// TODO(jonjohnsonjr): Is this correct?
+	lr, configSnap, opState, ctxDiags := b.localRun(stopCtx, op)
 	diags = diags.Append(ctxDiags)
 	if ctxDiags.HasErrors() {
 		op.ReportResult(runningOp, diags)

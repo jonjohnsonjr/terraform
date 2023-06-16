@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"strings"
 
 	"github.com/mitchellh/cli"
@@ -15,7 +16,7 @@ type MetadataCommand struct {
 	Meta
 }
 
-func (c *MetadataCommand) Run(args []string) int {
+func (c *MetadataCommand) Run(ctx context.Context, args []string) int {
 	return cli.RunResultHelp
 }
 

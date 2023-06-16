@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -22,7 +23,7 @@ type WorkspaceDeleteCommand struct {
 	LegacyName bool
 }
 
-func (c *WorkspaceDeleteCommand) Run(args []string) int {
+func (c *WorkspaceDeleteCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	envCommandShowWarning(c.Ui, c.LegacyName)
 

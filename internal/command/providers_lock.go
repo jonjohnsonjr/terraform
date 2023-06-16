@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -37,7 +38,7 @@ func (c *ProvidersLockCommand) Synopsis() string {
 	return "Write out dependency locks for the configured providers"
 }
 
-func (c *ProvidersLockCommand) Run(args []string) int {
+func (c *ProvidersLockCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("providers lock")
 	var optPlatforms FlagStringSlice

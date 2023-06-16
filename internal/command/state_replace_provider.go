@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -26,7 +27,7 @@ type StateReplaceProviderCommand struct {
 	StateMeta
 }
 
-func (c *StateReplaceProviderCommand) Run(args []string) int {
+func (c *StateReplaceProviderCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 
 	var autoApprove bool

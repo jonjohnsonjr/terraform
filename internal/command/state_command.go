@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"strings"
 
 	"github.com/mitchellh/cli"
@@ -15,7 +16,7 @@ type StateCommand struct {
 	StateMeta
 }
 
-func (c *StateCommand) Run(args []string) int {
+func (c *StateCommand) Run(ctx context.Context, args []string) int {
 	return cli.RunResultHelp
 }
 

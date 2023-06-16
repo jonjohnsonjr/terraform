@@ -7,10 +7,13 @@ package statemgr
 // operations done against full state managers.
 
 import (
+	"context"
+
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/states/statefile"
 	"github.com/hashicorp/terraform/internal/terraform"
 	"github.com/hashicorp/terraform/version"
+	"go.opentelemetry.io/otel"
 )
 
 // NewStateFile creates a new statefile.File object, with a newly-minted
@@ -48,7 +51,10 @@ func RefreshAndRead(mgr Storage) (*states.State, error) {
 // out quickly with a user-facing error. In situations where more control
 // is required, call WriteState and PersistState on the state manager directly
 // and handle their errors.
-func WriteAndPersist(mgr Storage, state *states.State, schemas *terraform.Schemas) error {
+func WriteAndPersist(ctx context.Context, mgr Storage, state *states.State, schemas *terraform.Schemas) error {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "WriteAndPersist")
+	defer span.End()
+
 	err := mgr.WriteState(state)
 	if err != nil {
 		return err

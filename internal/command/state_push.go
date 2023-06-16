@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -25,7 +26,7 @@ type StatePushCommand struct {
 	StateMeta
 }
 
-func (c *StatePushCommand) Run(args []string) int {
+func (c *StatePushCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	var flagForce bool
 	cmdFlags := c.Meta.ignoreRemoteVersionFlagSet("state push")

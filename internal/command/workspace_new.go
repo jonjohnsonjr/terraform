@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -23,7 +24,7 @@ type WorkspaceNewCommand struct {
 	LegacyName bool
 }
 
-func (c *WorkspaceNewCommand) Run(args []string) int {
+func (c *WorkspaceNewCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	envCommandShowWarning(c.Ui, c.LegacyName)
 

@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,7 @@ type LogoutCommand struct {
 }
 
 // Run implements cli.Command.
-func (c *LogoutCommand) Run(args []string) int {
+func (c *LogoutCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("logout")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }

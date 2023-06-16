@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -69,21 +70,21 @@ func (n *graphNodeImportState) ModulePath() addrs.Module {
 }
 
 // GraphNodeExecutable impl.
-func (n *graphNodeImportState) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *graphNodeImportState) Execute(_ context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	// Reset our states
 	n.states = nil
 
-	provider, _, err := getProvider(ctx, n.ResolvedProvider)
+	provider, _, err := getProvider(ectx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
 	}
 
 	// import state
-	absAddr := n.Addr.Resource.Absolute(ctx.Path())
+	absAddr := n.Addr.Resource.Absolute(ectx.Path())
 
 	// Call pre-import hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PreImportState(absAddr, n.ID)
 	}))
 	if diags.HasErrors() {
@@ -106,7 +107,7 @@ func (n *graphNodeImportState) Execute(ctx EvalContext, op walkOperation) (diags
 	n.states = imported
 
 	// Call post-import hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PostImportState(absAddr, imported)
 	}))
 	return diags
@@ -118,10 +119,13 @@ func (n *graphNodeImportState) Execute(ctx EvalContext, op walkOperation) (diags
 // and state inserts we need to do for our import state. Since they're new
 // resources they don't depend on anything else and refreshes are isolated
 // so this is nearly a perfect use case for dynamic expand.
-func (n *graphNodeImportState) DynamicExpand(ctx EvalContext) (*Graph, error) {
+func (n *graphNodeImportState) DynamicExpand(ctx context.Context, ectx EvalContext) (*Graph, error) {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "graphNodeImportState.DynamicExpand")
+	// defer span.End()
+
 	var diags tfdiags.Diagnostics
 
-	g := &Graph{Path: ctx.Path()}
+	g := &Graph{Path: ectx.Path()}
 
 	// nameCounter is used to de-dup names in the state.
 	nameCounter := make(map[string]int)
@@ -150,7 +154,7 @@ func (n *graphNodeImportState) DynamicExpand(ctx EvalContext) (*Graph, error) {
 	}
 
 	// Verify that all the addresses are clear
-	state := ctx.State()
+	state := ectx.State()
 	for _, addr := range addrs {
 		existing := state.ResourceInstance(addr)
 		if existing != nil {
@@ -208,7 +212,7 @@ func (n *graphNodeImportStateSub) Path() addrs.ModuleInstance {
 }
 
 // GraphNodeExecutable impl.
-func (n *graphNodeImportStateSub) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *graphNodeImportStateSub) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	// If the Ephemeral type isn't set, then it is an error
 	if n.State.TypeName == "" {
 		diags = diags.Append(fmt.Errorf("import of %s didn't set type", n.TargetAddr.String()))
@@ -224,7 +228,7 @@ func (n *graphNodeImportStateSub) Execute(ctx EvalContext, op walkOperation) (di
 			ResolvedProvider: n.ResolvedProvider,
 		},
 	}
-	state, refreshDiags := riNode.refresh(ctx, states.NotDeposed, state)
+	state, refreshDiags := riNode.refresh(ctx, ectx, states.NotDeposed, state)
 	diags = diags.Append(refreshDiags)
 	if diags.HasErrors() {
 		return diags
@@ -249,6 +253,6 @@ func (n *graphNodeImportStateSub) Execute(ctx EvalContext, op walkOperation) (di
 		return diags
 	}
 
-	diags = diags.Append(riNode.writeResourceInstanceState(ctx, state, workingState))
+	diags = diags.Append(riNode.writeResourceInstanceState(ectx, state, workingState))
 	return diags
 }

@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -19,7 +20,7 @@ type RefreshCommand struct {
 	Meta
 }
 
-func (c *RefreshCommand) Run(rawArgs []string) int {
+func (c *RefreshCommand) Run(ctx context.Context, rawArgs []string) int {
 	var diags tfdiags.Diagnostics
 
 	// Parse and apply global view arguments
@@ -96,7 +97,7 @@ func (c *RefreshCommand) Run(rawArgs []string) int {
 	diags = nil
 
 	// Perform the operation
-	op, err := c.RunOperation(be, opReq)
+	op, err := c.RunOperation(ctx, be, opReq)
 	if err != nil {
 		diags = diags.Append(err)
 		view.Diagnostics(diags)

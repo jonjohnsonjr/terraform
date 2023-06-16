@@ -18,10 +18,11 @@ import (
 	"github.com/hashicorp/terraform/internal/terraform"
 	"github.com/hashicorp/terraform/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
 )
 
 // backend.Local implementation.
-func (b *Local) LocalRun(op *backend.Operation) (*backend.LocalRun, statemgr.Full, tfdiags.Diagnostics) {
+func (b *Local) LocalRun(ctx context.Context, op *backend.Operation) (*backend.LocalRun, statemgr.Full, tfdiags.Diagnostics) {
 	// Make sure the type is invalid. We use this as a way to know not
 	// to ask for input/validate. We're modifying this through a pointer,
 	// so we're mutating an object that belongs to the caller here, which
@@ -32,12 +33,15 @@ func (b *Local) LocalRun(op *backend.Operation) (*backend.LocalRun, statemgr.Ful
 
 	op.StateLocker = op.StateLocker.WithContext(context.Background())
 
-	lr, _, stateMgr, diags := b.localRun(op)
+	lr, _, stateMgr, diags := b.localRun(ctx, op)
 	return lr, stateMgr, diags
 }
 
-func (b *Local) localRun(op *backend.Operation) (*backend.LocalRun, *configload.Snapshot, statemgr.Full, tfdiags.Diagnostics) {
+func (b *Local) localRun(ctx context.Context, op *backend.Operation) (*backend.LocalRun, *configload.Snapshot, statemgr.Full, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
+
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Local.localRun")
+	defer span.End()
 
 	// Get the latest state.
 	log.Printf("[TRACE] backend/local: requesting state manager for workspace %q", op.Workspace)
@@ -113,7 +117,7 @@ func (b *Local) localRun(op *backend.Operation) (*backend.LocalRun, *configload.
 			mode := terraform.InputModeProvider
 
 			log.Printf("[TRACE] backend/local: requesting interactive input, if necessary")
-			inputDiags := ret.Core.Input(ret.Config, mode)
+			inputDiags := ret.Core.Input(ctx, ret.Config, mode)
 			diags = diags.Append(inputDiags)
 			if inputDiags.HasErrors() {
 				return nil, nil, nil, diags
@@ -123,7 +127,7 @@ func (b *Local) localRun(op *backend.Operation) (*backend.LocalRun, *configload.
 		// If validation is enabled, validate
 		if b.OpValidation {
 			log.Printf("[TRACE] backend/local: running validation operation")
-			validateDiags := ret.Core.Validate(ret.Config)
+			validateDiags := ret.Core.Validate(ctx, ret.Config)
 			diags = diags.Append(validateDiags)
 		}
 	}

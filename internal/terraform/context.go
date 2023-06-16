@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
 )
 
 // InputMode defines what sort of input will be asked for when Input
@@ -211,7 +212,10 @@ func (c *Context) Stop() {
 	log.Printf("[WARN] terraform: stop complete")
 }
 
-func (c *Context) acquireRun(phase string) func() {
+func (c *Context) acquireRun(ctx context.Context, phase string) func() {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Context.acquireRun")
+	defer span.End()
+
 	// With the run lock held, grab the context lock to make changes
 	// to the run context.
 	c.l.Lock()
@@ -226,7 +230,7 @@ func (c *Context) acquireRun(phase string) func() {
 	c.runCond = sync.NewCond(&c.l)
 
 	// Create a new run context
-	c.runContext, c.runContextCancel = context.WithCancel(context.Background())
+	c.runContext, c.runContextCancel = context.WithCancel(ctx)
 
 	// Reset the stop hook so we're not stopped
 	c.sh.Reset()

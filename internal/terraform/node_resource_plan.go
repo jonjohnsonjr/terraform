@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -95,14 +96,17 @@ func (n *nodeExpandPlannableResource) ModifyCreateBeforeDestroy(v bool) error {
 	return nil
 }
 
-func (n *nodeExpandPlannableResource) DynamicExpand(ctx EvalContext) (*Graph, error) {
+func (n *nodeExpandPlannableResource) DynamicExpand(ctx context.Context, ectx EvalContext) (*Graph, error) {
+	//ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "nodeExpandPlannableResource.DynamicExpand")
+	//defer span.End()
+
 	var g Graph
 
-	expander := ctx.InstanceExpander()
+	expander := ectx.InstanceExpander()
 	moduleInstances := expander.ExpandModule(n.Addr.Module)
 
 	// Lock the state while we inspect it
-	state := ctx.State().Lock()
+	state := ectx.State().Lock()
 
 	var orphans []*states.Resource
 	for _, res := range state.Resources(n.Addr) {
@@ -123,7 +127,7 @@ func (n *nodeExpandPlannableResource) DynamicExpand(ctx EvalContext) (*Graph, er
 	// We'll no longer use the state directly here, and the other functions
 	// we'll call below may use it so we'll release the lock.
 	state = nil
-	ctx.State().Unlock()
+	ectx.State().Unlock()
 
 	// The concrete resource factory we'll use for orphans
 	concreteResourceOrphan := func(a *NodeAbstractResourceInstance) *NodePlannableResourceInstanceOrphan {
@@ -163,7 +167,7 @@ func (n *nodeExpandPlannableResource) DynamicExpand(ctx EvalContext) (*Graph, er
 	instAddrs := addrs.MakeSet[addrs.Checkable]()
 	for _, module := range moduleInstances {
 		resAddr := n.Addr.Resource.Absolute(module)
-		err := n.expandResourceInstances(ctx, resAddr, &g, instAddrs)
+		err := n.expandResourceInstances(ectx, resAddr, &g, instAddrs)
 		diags = diags.Append(err)
 	}
 	if diags.HasErrors() {
@@ -175,7 +179,7 @@ func (n *nodeExpandPlannableResource) DynamicExpand(ctx EvalContext) (*Graph, er
 	// wants to know the addresses of the checkable objects so that it can
 	// treat them as unknown status if we encounter an error before actually
 	// visiting the checks.
-	if checkState := ctx.Checks(); checkState.ConfigHasChecks(n.NodeAbstractResource.Addr) {
+	if checkState := ectx.Checks(); checkState.ConfigHasChecks(n.NodeAbstractResource.Addr) {
 		checkState.ReportCheckableObjects(n.NodeAbstractResource.Addr, instAddrs)
 	}
 
@@ -189,7 +193,7 @@ func (n *nodeExpandPlannableResource) DynamicExpand(ctx EvalContext) (*Graph, er
 //
 // It has several side-effects:
 //   - Adds a node to Graph g for each leaf resource instance it discovers, whether present or orphaned.
-//   - Registers the expansion of the resource in the "expander" object embedded inside EvalContext ctx.
+//   - Registers the expansion of the resource in the "expander" object embedded inside EvalContext ectx.
 //   - Adds each present (non-orphaned) resource instance address to instAddrs (guaranteed to always be addrs.AbsResourceInstance, despite being declared as addrs.Checkable).
 //
 // After calling this for each of the module instances the resource appears
@@ -301,13 +305,13 @@ func (n *nodeExpandPlannableResource) expandResourceInstances(globalCtx EvalCont
 	return diags.ErrWithWarnings()
 }
 
-func (n *nodeExpandPlannableResource) resourceInstanceSubgraph(ctx EvalContext, addr addrs.AbsResource, instanceAddrs []addrs.AbsResourceInstance) (*Graph, error) {
+func (n *nodeExpandPlannableResource) resourceInstanceSubgraph(ectx EvalContext, addr addrs.AbsResource, instanceAddrs []addrs.AbsResourceInstance) (*Graph, error) {
 	var diags tfdiags.Diagnostics
 
 	// Our graph transformers require access to the full state, so we'll
 	// temporarily lock it while we work on this.
-	state := ctx.State().Lock()
-	defer ctx.State().Unlock()
+	state := ectx.State().Lock()
+	defer ectx.State().Unlock()
 
 	// The concrete resource factory we'll use
 	concreteResource := func(a *NodeAbstractResourceInstance) dag.Vertex {

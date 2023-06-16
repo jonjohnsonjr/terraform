@@ -61,19 +61,22 @@ type ContextGraphWalker struct {
 	provisionerLock    sync.Mutex
 }
 
-func (w *ContextGraphWalker) EnterPath(path addrs.ModuleInstance) EvalContext {
+func (w *ContextGraphWalker) EnterPath(ctx context.Context, path addrs.ModuleInstance) EvalContext {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ContextGraphWalker.EnterPath")
+	// defer span.End()
+
 	w.contextLock.Lock()
 	defer w.contextLock.Unlock()
 
 	// If we already have a context for this path cached, use that
 	key := path.String()
-	if ctx, ok := w.contexts[key]; ok {
-		return ctx
+	if ectx, ok := w.contexts[key]; ok {
+		return ectx
 	}
 
-	ctx := w.EvalContext().WithPath(path)
-	w.contexts[key] = ctx.(*BuiltinEvalContext)
-	return ctx
+	ectx := w.EvalContext().WithPath(path)
+	w.contexts[key] = ectx.(*BuiltinEvalContext)
+	return ectx
 }
 
 func (w *ContextGraphWalker) EvalContext() EvalContext {
@@ -94,7 +97,7 @@ func (w *ContextGraphWalker) EvalContext() EvalContext {
 		PlanTimestamp:      w.PlanTimestamp,
 	}
 
-	ctx := &BuiltinEvalContext{
+	ectx := &BuiltinEvalContext{
 		StopContext:           w.StopContext,
 		Hooks:                 w.Context.hooks,
 		InputValue:            w.Context.uiInput,
@@ -116,7 +119,7 @@ func (w *ContextGraphWalker) EvalContext() EvalContext {
 		VariableValuesLock:    &w.variableValuesLock,
 	}
 
-	return ctx
+	return ectx
 }
 
 func (w *ContextGraphWalker) init() {
@@ -135,10 +138,13 @@ func (w *ContextGraphWalker) init() {
 	}
 }
 
-func (w *ContextGraphWalker) Execute(ctx EvalContext, n GraphNodeExecutable) tfdiags.Diagnostics {
+func (w *ContextGraphWalker) Execute(ctx context.Context, ectx EvalContext, n GraphNodeExecutable) tfdiags.Diagnostics {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ContextGraphWalker.Execute")
+	// defer span.End()
+
 	// Acquire a lock on the semaphore
 	w.Context.parallelSem.Acquire()
 	defer w.Context.parallelSem.Release()
 
-	return n.Execute(ctx, w.Operation)
+	return n.Execute(ctx, ectx, w.Operation)
 }

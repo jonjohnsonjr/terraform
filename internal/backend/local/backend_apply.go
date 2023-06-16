@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform/internal/states/statemgr"
 	"github.com/hashicorp/terraform/internal/terraform"
 	"github.com/hashicorp/terraform/internal/tfdiags"
+	"go.opentelemetry.io/otel"
 )
 
 // test hook called between plan+apply during opApply
@@ -29,6 +30,10 @@ func (b *Local) opApply(
 	cancelCtx context.Context,
 	op *backend.Operation,
 	runningOp *backend.RunningOperation) {
+
+	stopCtx, span := otel.Tracer("github.com/hashicorp/terraform").Start(stopCtx, "Local.opApply")
+	defer span.End()
+
 	log.Printf("[INFO] backend/local: starting Apply operation")
 
 	var diags, moreDiags tfdiags.Diagnostics
@@ -51,7 +56,7 @@ func (b *Local) opApply(
 	op.Hooks = append(op.Hooks, stateHook)
 
 	// Get our context
-	lr, _, opState, contextDiags := b.localRun(op)
+	lr, _, opState, contextDiags := b.localRun(stopCtx, op)
 	diags = diags.Append(contextDiags)
 	if contextDiags.HasErrors() {
 		op.ReportResult(runningOp, diags)
@@ -88,7 +93,7 @@ func (b *Local) opApply(
 	if op.PlanFile == nil {
 		// Perform the plan
 		log.Printf("[INFO] backend/local: apply calling Plan")
-		plan, moreDiags = lr.Core.Plan(lr.Config, lr.InputState, lr.PlanOpts)
+		plan, moreDiags = lr.Core.Plan(stopCtx, lr.Config, lr.InputState, lr.PlanOpts)
 		diags = diags.Append(moreDiags)
 		if moreDiags.HasErrors() {
 			// If Terraform Core generated a partial plan despite the errors
@@ -239,7 +244,7 @@ func (b *Local) opApply(
 		defer logging.PanicHandler()
 		defer close(doneCh)
 		log.Printf("[INFO] backend/local: apply calling Apply")
-		applyState, applyDiags = lr.Core.Apply(plan, lr.Config)
+		applyState, applyDiags = lr.Core.Apply(stopCtx, plan, lr.Config)
 	}()
 
 	if b.opWait(doneCh, stopCtx, cancelCtx, lr.Core, opState, op.View) {
@@ -257,7 +262,7 @@ func (b *Local) opApply(
 
 	// Store the final state
 	runningOp.State = applyState
-	err := statemgr.WriteAndPersist(opState, applyState, schemas)
+	err := statemgr.WriteAndPersist(stopCtx, opState, applyState, schemas)
 	if err != nil {
 		// Export the state file from the state manager and assign the new
 		// state. This is needed to preserve the existing serial and lineage.

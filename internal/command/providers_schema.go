@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -27,7 +28,7 @@ func (c *ProvidersSchemaCommand) Synopsis() string {
 	return "Show schemas for the providers used in the configuration"
 }
 
-func (c *ProvidersSchemaCommand) Run(args []string) int {
+func (c *ProvidersSchemaCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("providers schema")
 	var jsonOutput bool

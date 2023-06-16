@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -135,21 +136,21 @@ func (n *NodeDestroyResourceInstance) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeDestroyResourceInstance) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeDestroyResourceInstance) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
 	// Eval info is different depending on what kind of resource this is
 	switch addr.Resource.Resource.Mode {
 	case addrs.ManagedResourceMode:
-		return n.managedResourceExecute(ctx)
+		return n.managedResourceExecute(ctx, ectx)
 	case addrs.DataResourceMode:
-		return n.dataResourceExecute(ctx)
+		return n.dataResourceExecute(ectx)
 	default:
 		panic(fmt.Errorf("unsupported resource mode %s", n.Config.Mode))
 	}
 }
 
-func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx context.Context, ectx EvalContext) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
 	// Get our state
@@ -162,13 +163,13 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx EvalContext) (d
 	var changeApply *plans.ResourceInstanceChange
 	var state *states.ResourceInstanceObject
 
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
 	}
 
-	changeApply, err = n.readDiff(ctx, providerSchema)
+	changeApply, err = n.readDiff(ectx, providerSchema)
 	diags = diags.Append(err)
 	if changeApply == nil || diags.HasErrors() {
 		return diags
@@ -181,7 +182,7 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx EvalContext) (d
 		return diags
 	}
 
-	state, readDiags := n.readResourceInstanceState(ctx, addr)
+	state, readDiags := n.readResourceInstanceState(ectx, addr)
 	diags = diags.Append(readDiags)
 	if diags.HasErrors() {
 		return diags
@@ -192,21 +193,21 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx EvalContext) (d
 		return diags
 	}
 
-	diags = diags.Append(n.preApplyHook(ctx, changeApply))
+	diags = diags.Append(n.preApplyHook(ectx, changeApply))
 	if diags.HasErrors() {
 		return diags
 	}
 
 	// Run destroy provisioners if not tainted
 	if state.Status != states.ObjectTainted {
-		applyProvisionersDiags := n.evalApplyProvisioners(ctx, state, false, configs.ProvisionerWhenDestroy)
+		applyProvisionersDiags := n.evalApplyProvisioners(ectx, state, false, configs.ProvisionerWhenDestroy)
 		diags = diags.Append(applyProvisionersDiags)
 		// keep the diags separate from the main set until we handle the cleanup
 
 		if diags.HasErrors() {
 			// If we have a provisioning error, then we just call
 			// the post-apply hook now.
-			diags = diags.Append(n.postApplyHook(ctx, state, diags.Err()))
+			diags = diags.Append(n.postApplyHook(ectx, state, diags.Err()))
 			return diags
 		}
 	}
@@ -214,24 +215,24 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx EvalContext) (d
 	// Managed resources need to be destroyed, while data sources
 	// are only removed from state.
 	// we pass a nil configuration to apply because we are destroying
-	s, d := n.apply(ctx, state, changeApply, nil, instances.RepetitionData{}, false)
+	s, d := n.apply(ctx, ectx, state, changeApply, nil, instances.RepetitionData{}, false)
 	state, diags = s, diags.Append(d)
 	// we don't return immediately here on error, so that the state can be
 	// finalized
 
-	err = n.writeResourceInstanceState(ctx, state, workingState)
+	err = n.writeResourceInstanceState(ectx, state, workingState)
 	if err != nil {
 		return diags.Append(err)
 	}
 
 	// create the err value for postApplyHook
-	diags = diags.Append(n.postApplyHook(ctx, state, diags.Err()))
-	diags = diags.Append(updateStateHook(ctx))
+	diags = diags.Append(n.postApplyHook(ectx, state, diags.Err()))
+	diags = diags.Append(updateStateHook(ectx))
 	return diags
 }
 
-func (n *NodeDestroyResourceInstance) dataResourceExecute(ctx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodeDestroyResourceInstance) dataResourceExecute(ectx EvalContext) (diags tfdiags.Diagnostics) {
 	log.Printf("[TRACE] NodeDestroyResourceInstance: removing state object for %s", n.Addr)
-	ctx.State().SetResourceInstanceCurrent(n.Addr, nil, n.ResolvedProvider)
-	return diags.Append(updateStateHook(ctx))
+	ectx.State().SetResourceInstanceCurrent(n.Addr, nil, n.ResolvedProvider)
+	return diags.Append(updateStateHook(ectx))
 }

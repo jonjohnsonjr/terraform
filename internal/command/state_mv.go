@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -23,7 +24,7 @@ type StateMvCommand struct {
 	StateMeta
 }
 
-func (c *StateMvCommand) Run(args []string) int {
+func (c *StateMvCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	// We create two metas to track the two states
 	var backupPathOut, statePathOut string

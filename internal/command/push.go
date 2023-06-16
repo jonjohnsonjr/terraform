@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"strings"
 
 	"github.com/hashicorp/terraform/internal/tfdiags"
@@ -13,7 +14,7 @@ type PushCommand struct {
 	Meta
 }
 
-func (c *PushCommand) Run(args []string) int {
+func (c *PushCommand) Run(ctx context.Context, args []string) int {
 	// This command is no longer supported, but we'll retain it just to
 	// give the user some next-steps after upgrading.
 	c.showDiagnostics(tfdiags.Sourceless(

@@ -5,6 +5,7 @@
 package simple
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform/internal/providers"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
+	"go.opentelemetry.io/otel"
 )
 
 type simple struct {
@@ -108,7 +110,10 @@ func (s simple) PlanResourceChange(req providers.PlanResourceChangeRequest) (res
 	return resp
 }
 
-func (s simple) ApplyResourceChange(req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+func (s simple) ApplyResourceChange(ctx context.Context, req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "simple.ApplyResourceChange")
+	defer span.End()
+
 	if req.PlannedState.IsNull() {
 		resp.NewState = req.PlannedState
 		return resp

@@ -48,7 +48,7 @@ func (b *Local) opRefresh(
 	op.PlanRefresh = true
 
 	// Get our context
-	lr, _, opState, contextDiags := b.localRun(op)
+	lr, _, opState, contextDiags := b.localRun(stopCtx, op)
 	diags = diags.Append(contextDiags)
 	if contextDiags.HasErrors() {
 		op.ReportResult(runningOp, diags)
@@ -91,7 +91,7 @@ func (b *Local) opRefresh(
 	go func() {
 		defer logging.PanicHandler()
 		defer close(doneCh)
-		newState, refreshDiags = lr.Core.Refresh(lr.Config, lr.InputState, lr.PlanOpts)
+		newState, refreshDiags = lr.Core.Refresh(stopCtx, lr.Config, lr.InputState, lr.PlanOpts)
 		log.Printf("[INFO] backend/local: refresh calling Refresh")
 	}()
 
@@ -107,7 +107,7 @@ func (b *Local) opRefresh(
 		return
 	}
 
-	err := statemgr.WriteAndPersist(opState, newState, schemas)
+	err := statemgr.WriteAndPersist(stopCtx, opState, newState, schemas)
 	if err != nil {
 		diags = diags.Append(fmt.Errorf("failed to write state: %w", err))
 		op.ReportResult(runningOp, diags)

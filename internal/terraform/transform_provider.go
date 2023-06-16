@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -414,7 +415,7 @@ func (n *graphNodeCloseProvider) ModulePath() addrs.Module {
 }
 
 // GraphNodeExecutable impl.
-func (n *graphNodeCloseProvider) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *graphNodeCloseProvider) Execute(_ context.Context, ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	return diags.Append(ctx.CloseProvider(n.Addr))
 }
 

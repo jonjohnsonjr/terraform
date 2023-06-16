@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -25,7 +26,7 @@ type StateShowCommand struct {
 	StateMeta
 }
 
-func (c *StateShowCommand) Run(args []string) int {
+func (c *StateShowCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("state show")
 	cmdFlags.StringVar(&c.Meta.statePath, "state", "", "path")

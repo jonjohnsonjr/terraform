@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 
 	"github.com/hashicorp/terraform/internal/tfdiags"
@@ -20,7 +21,7 @@ var (
 )
 
 // GraphNodeExecutable
-func (n *NodeDestroyableDataResourceInstance) Execute(ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
+func (n *NodeDestroyableDataResourceInstance) Execute(_ context.Context, ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
 	log.Printf("[TRACE] NodeDestroyableDataResourceInstance: removing state object for %s", n.Addr)
 	ctx.State().SetResourceInstanceCurrent(n.Addr, nil, n.ResolvedProvider)
 	return nil

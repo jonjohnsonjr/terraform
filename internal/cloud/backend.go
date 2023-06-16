@@ -24,6 +24,7 @@ import (
 	"github.com/mitchellh/colorstring"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
+	"go.opentelemetry.io/otel"
 
 	"github.com/hashicorp/terraform/internal/backend"
 	"github.com/hashicorp/terraform/internal/command/jsonformat"
@@ -666,6 +667,9 @@ func (b *Cloud) StateMgr(name string) (statemgr.Full, error) {
 
 // Operation implements backend.Enhanced.
 func (b *Cloud) Operation(ctx context.Context, op *backend.Operation) (*backend.RunningOperation, error) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Cloud.Operation")
+	defer span.End()
+
 	// Retrieve the workspace for this operation.
 	w, err := b.fetchWorkspace(ctx, b.organization, op.Workspace)
 	if err != nil {

@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/go-uuid"
@@ -111,7 +112,7 @@ func planDataStoreResourceChange(req providers.PlanResourceChangeRequest) (resp 
 
 var testUUIDHook func() string
 
-func applyDataStoreResourceChange(req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+func applyDataStoreResourceChange(ctx context.Context, req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
 	if req.PlannedState.IsNull() {
 		resp.NewState = req.PlannedState
 		return resp

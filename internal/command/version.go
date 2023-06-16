@@ -5,6 +5,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -58,7 +59,7 @@ Options:
 	return strings.TrimSpace(helpText)
 }
 
-func (c *VersionCommand) Run(args []string) int {
+func (c *VersionCommand) Run(ctx context.Context, args []string) int {
 	var outdated bool
 	var latest string
 	var versionString bytes.Buffer

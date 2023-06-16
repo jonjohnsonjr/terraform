@@ -4,6 +4,7 @@
 package dag
 
 import (
+	"context"
 	"errors"
 	"log"
 	"sync"
@@ -116,7 +117,10 @@ type walkerVertex struct {
 // Wait will return as soon as all currently known vertices are complete.
 // If you plan on calling Update with more vertices in the future, you
 // should not call Wait until after this is done.
-func (w *Walker) Wait() tfdiags.Diagnostics {
+func (w *Walker) Wait(ctx context.Context) tfdiags.Diagnostics {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Walker.Wait")
+	// defer span.End()
+
 	// Wait for completion
 	w.wait.Wait()
 
@@ -145,7 +149,10 @@ func (w *Walker) Wait() tfdiags.Diagnostics {
 //
 // Multiple Updates can be called in parallel. Update can be called at any
 // time during a walk.
-func (w *Walker) Update(g *AcyclicGraph) {
+func (w *Walker) Update(ctx context.Context, g *AcyclicGraph) {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Walker.Update")
+	// defer span.End()
+
 	w.init()
 	v := make(Set)
 	e := make(Set)
@@ -297,14 +304,14 @@ func (w *Walker) Update(g *AcyclicGraph) {
 		info.depsCancelCh = cancelCh
 
 		// Start the waiter
-		go w.waitDeps(v, deps, doneCh, cancelCh)
+		go w.waitDeps(ctx, v, deps, doneCh, cancelCh)
 	}
 
 	// Start all the new vertices. We do this at the end so that all
 	// the edge waiters and changes are set up above.
 	for _, raw := range newVerts {
 		v := raw.(Vertex)
-		go w.walkVertex(v, w.vertexMap[v])
+		go w.walkVertex(ctx, v, w.vertexMap[v])
 	}
 }
 
@@ -320,7 +327,10 @@ func (w *Walker) edgeParts(e Edge) (Vertex, Vertex) {
 
 // walkVertex walks a single vertex, waiting for any dependencies before
 // executing the callback.
-func (w *Walker) walkVertex(v Vertex, info *walkerVertex) {
+func (w *Walker) walkVertex(ctx context.Context, v Vertex, info *walkerVertex) {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Walker.walkVertex")
+	// defer span.End()
+
 	// When we're done executing, lower the waitgroup count
 	defer w.wait.Done()
 
@@ -381,7 +391,7 @@ func (w *Walker) walkVertex(v Vertex, info *walkerVertex) {
 	var diags tfdiags.Diagnostics
 	var upstreamFailed bool
 	if depsSuccess {
-		diags = w.Callback(v)
+		diags = w.Callback(ctx, v)
 	} else {
 		log.Printf("[TRACE] dag/walk: upstream of %q errored, so skipping", VertexName(v))
 		// This won't be displayed to the user because we'll set upstreamFailed,
@@ -408,10 +418,14 @@ func (w *Walker) walkVertex(v Vertex, info *walkerVertex) {
 }
 
 func (w *Walker) waitDeps(
+	ctx context.Context,
 	v Vertex,
 	deps map[Vertex]<-chan struct{},
 	doneCh chan<- bool,
 	cancelCh <-chan struct{}) {
+
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Walker.waitDeps")
+	// defer span.End()
 
 	// For each dependency given to us, wait for it to complete
 	for dep, depCh := range deps {

@@ -14,6 +14,8 @@ import (
 	"sort"
 	"sync"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/hashicorp/terraform/internal/backend"
 	"github.com/hashicorp/terraform/internal/command/views"
 	"github.com/hashicorp/terraform/internal/configs/configschema"
@@ -277,6 +279,9 @@ func (b *Local) Operation(ctx context.Context, op *backend.Operation) (*backend.
 		panic("Operation called with nil View")
 	}
 
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Local.Operation")
+	defer span.End()
+
 	// Determine the function to call for our operation
 	var f func(context.Context, context.Context, *backend.Operation, *backend.RunningOperation)
 	switch op.Type {
@@ -339,6 +344,10 @@ func (b *Local) opWait(
 	tfCtx *terraform.Context,
 	opStateMgr statemgr.Persister,
 	view views.Operation) (canceled bool) {
+
+	stopCtx, span := otel.Tracer("github.com/hashicorp/terraform").Start(stopCtx, "Local.opWait")
+	defer span.End()
+
 	// Wait for the operation to finish or for us to be interrupted so
 	// we can handle it properly.
 	select {

@@ -37,7 +37,7 @@ type InitCommand struct {
 	Meta
 }
 
-func (c *InitCommand) Run(args []string) int {
+func (c *InitCommand) Run(ctx context.Context, args []string) int {
 	var flagFromModule, flagLockfile string
 	var flagBackend, flagCloud, flagGet, flagUpgrade bool
 	var flagPluginPath FlagStringSlice

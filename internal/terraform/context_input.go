@@ -34,7 +34,7 @@ import (
 // any other Context method with a different config, because the aforementioned
 // modified internal state won't match. Again, this is an architectural wart
 // that we'll hopefully resolve in future.
-func (c *Context) Input(config *configs.Config, mode InputMode) tfdiags.Diagnostics {
+func (c *Context) Input(ctx context.Context, config *configs.Config, mode InputMode) tfdiags.Diagnostics {
 	// This function used to be responsible for more than it is now, so its
 	// interface is more general than its current functionality requires.
 	// It now exists only to handle interactive prompts for provider
@@ -46,7 +46,7 @@ func (c *Context) Input(config *configs.Config, mode InputMode) tfdiags.Diagnost
 	// produces UI input prompts.)
 
 	var diags tfdiags.Diagnostics
-	defer c.acquireRun("input")()
+	defer c.acquireRun(ctx, "input")()
 
 	schemas, moreDiags := c.Schemas(config, nil)
 	diags = diags.Append(moreDiags)
@@ -58,8 +58,6 @@ func (c *Context) Input(config *configs.Config, mode InputMode) tfdiags.Diagnost
 		log.Printf("[TRACE] Context.Input: uiInput is nil, so skipping")
 		return diags
 	}
-
-	ctx := context.Background()
 
 	if mode&InputModeProvider != 0 {
 		log.Printf("[TRACE] Context.Input: Prompting for provider arguments")

@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -41,10 +42,13 @@ func (n *nodeExpandApplyableResource) Name() string {
 	return n.NodeAbstractResource.Name() + " (expand)"
 }
 
-func (n *nodeExpandApplyableResource) DynamicExpand(ctx EvalContext) (*Graph, error) {
+func (n *nodeExpandApplyableResource) DynamicExpand(ctx context.Context, ectx EvalContext) (*Graph, error) {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "nodeExpandApplyableResource.DynamicExpand")
+	// defer span.End()
+
 	var g Graph
 
-	expander := ctx.InstanceExpander()
+	expander := ectx.InstanceExpander()
 	moduleInstances := expander.ExpandModule(n.Addr.Module)
 	for _, module := range moduleInstances {
 		g.Add(&NodeApplyableResource{
@@ -104,12 +108,12 @@ func (n *NodeApplyableResource) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeApplyableResource) Execute(ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
+func (n *NodeApplyableResource) Execute(_ context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
 	if n.Config == nil {
 		// Nothing to do, then.
 		log.Printf("[TRACE] NodeApplyableResource: no configuration present for %s", n.Name())
 		return nil
 	}
 
-	return n.writeResourceState(ctx, n.Addr)
+	return n.writeResourceState(ectx, n.Addr)
 }

@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform/internal/refactoring"
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/tfdiags"
+	"go.opentelemetry.io/otel"
 )
 
 // graphWalkOpts captures some transient values we use (and possibly mutate)
@@ -44,7 +46,10 @@ type graphWalkOpts struct {
 	MoveResults refactoring.MoveResults
 }
 
-func (c *Context) walk(graph *Graph, operation walkOperation, opts *graphWalkOpts) (*ContextGraphWalker, tfdiags.Diagnostics) {
+func (c *Context) walk(ctx context.Context, graph *Graph, operation walkOperation, opts *graphWalkOpts) (*ContextGraphWalker, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Context.walk")
+	defer span.End()
+
 	log.Printf("[DEBUG] Starting graph walk: %s", operation.String())
 
 	walker := c.graphWalker(operation, opts)
@@ -53,7 +58,7 @@ func (c *Context) walk(graph *Graph, operation walkOperation, opts *graphWalkOpt
 	watchStop, watchWait := c.watchStop(walker)
 
 	// Walk the real graph, this will block until it completes
-	diags := graph.Walk(walker)
+	diags := graph.Walk(ctx, walker)
 
 	// Close the channel so the watcher stops, and wait for it to return.
 	close(watchStop)

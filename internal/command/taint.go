@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -22,7 +23,7 @@ type TaintCommand struct {
 	Meta
 }
 
-func (c *TaintCommand) Run(args []string) int {
+func (c *TaintCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	var allowMissing bool
 	cmdFlags := c.Meta.ignoreRemoteVersionFlagSet("taint")

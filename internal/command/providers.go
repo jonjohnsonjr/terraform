@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -28,7 +29,7 @@ func (c *ProvidersCommand) Synopsis() string {
 	return "Show the providers required for this configuration"
 }
 
-func (c *ProvidersCommand) Run(args []string) int {
+func (c *ProvidersCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("providers")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }

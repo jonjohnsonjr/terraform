@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -24,7 +25,7 @@ var (
 )
 
 // GraphNodeExecutable
-func (n *NodeApplyableProvider) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableProvider) Execute(_ context.Context, ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	_, err := ctx.InitProvider(n.Addr)
 	diags = diags.Append(err)
 	if diags.HasErrors() {

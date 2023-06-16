@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -38,15 +39,15 @@ func (n *nodeReportCheck) ModulePath() addrs.Module {
 	return n.addr.Module
 }
 
-func (n *nodeReportCheck) Execute(ctx EvalContext, _ walkOperation) tfdiags.Diagnostics {
-	exp := ctx.InstanceExpander()
+func (n *nodeReportCheck) Execute(_ context.Context, ectx EvalContext, _ walkOperation) tfdiags.Diagnostics {
+	exp := ectx.InstanceExpander()
 	modInsts := exp.ExpandModule(n.ModulePath())
 
 	instAddrs := addrs.MakeSet[addrs.Checkable]()
 	for _, modAddr := range modInsts {
 		instAddrs.Add(n.addr.Check.Absolute(modAddr))
 	}
-	ctx.Checks().ReportCheckableObjects(n.addr, instAddrs)
+	ectx.Checks().ReportCheckableObjects(n.addr, instAddrs)
 	return nil
 }
 
@@ -79,8 +80,11 @@ func (n *nodeExpandCheck) ModulePath() addrs.Module {
 	return n.addr.Module
 }
 
-func (n *nodeExpandCheck) DynamicExpand(ctx EvalContext) (*Graph, error) {
-	exp := ctx.InstanceExpander()
+func (n *nodeExpandCheck) DynamicExpand(ctx context.Context, ectx EvalContext) (*Graph, error) {
+	// ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "nodeExpandCheck.DynamicExpand")
+	// defer span.End()
+
+	exp := ectx.InstanceExpander()
 	modInsts := exp.ExpandModule(n.ModulePath())
 
 	var g Graph
@@ -148,12 +152,12 @@ func (n *nodeCheckAssert) Path() addrs.ModuleInstance {
 	return n.addr.Module
 }
 
-func (n *nodeCheckAssert) Execute(ctx EvalContext, _ walkOperation) tfdiags.Diagnostics {
+func (n *nodeCheckAssert) Execute(_ context.Context, ectx EvalContext, _ walkOperation) tfdiags.Diagnostics {
 
 	// We only want to actually execute the checks during specific
 	// operations, such as plan and applies.
 	if n.executeChecks {
-		if status := ctx.Checks().ObjectCheckStatus(n.addr); status == checks.StatusFail || status == checks.StatusError {
+		if status := ectx.Checks().ObjectCheckStatus(n.addr); status == checks.StatusFail || status == checks.StatusError {
 			// This check is already failing, so we won't try and evaluate it.
 			// This typically means there was an error in a data block within
 			// the check block.
@@ -163,7 +167,7 @@ func (n *nodeCheckAssert) Execute(ctx EvalContext, _ walkOperation) tfdiags.Diag
 		return evalCheckRules(
 			addrs.CheckAssertion,
 			n.config.Asserts,
-			ctx,
+			ectx,
 			n.addr,
 			EvalDataForNoInstanceKey,
 			tfdiags.Warning)
@@ -174,7 +178,7 @@ func (n *nodeCheckAssert) Execute(ctx EvalContext, _ walkOperation) tfdiags.Diag
 	// diagnostics if references do not exist etc.
 	var diags tfdiags.Diagnostics
 	for _, assert := range n.config.Asserts {
-		_, _, moreDiags := validateCheckRule(addrs.CheckAssertion, assert, ctx, n.addr, EvalDataForNoInstanceKey)
+		_, _, moreDiags := validateCheckRule(addrs.CheckAssertion, assert, ectx, n.addr, EvalDataForNoInstanceKey)
 		diags = diags.Append(moreDiags)
 	}
 	return diags
@@ -193,7 +197,7 @@ var (
 // dependency that can enforce this ordering.
 type nodeCheckStart struct{}
 
-func (n *nodeCheckStart) Execute(context EvalContext, operation walkOperation) tfdiags.Diagnostics {
+func (n *nodeCheckStart) Execute(_ context.Context, context EvalContext, operation walkOperation) tfdiags.Diagnostics {
 	// This node doesn't actually do anything, except simplify the underlying
 	// graph structure.
 	return nil

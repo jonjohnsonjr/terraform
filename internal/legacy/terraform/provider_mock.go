@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 
@@ -276,7 +277,7 @@ func (p *MockProvider) PlanResourceChange(r providers.PlanResourceChangeRequest)
 	return p.PlanResourceChangeResponse
 }
 
-func (p *MockProvider) ApplyResourceChange(r providers.ApplyResourceChangeRequest) providers.ApplyResourceChangeResponse {
+func (p *MockProvider) ApplyResourceChange(_ context.Context, r providers.ApplyResourceChangeRequest) providers.ApplyResourceChangeResponse {
 	p.Lock()
 	p.ApplyResourceChangeCalled = true
 	p.ApplyResourceChangeRequest = r

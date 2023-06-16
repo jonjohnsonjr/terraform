@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -24,7 +25,7 @@ type ApplyCommand struct {
 	Destroy bool
 }
 
-func (c *ApplyCommand) Run(rawArgs []string) int {
+func (c *ApplyCommand) Run(ctx context.Context, rawArgs []string) int {
 	var diags tfdiags.Diagnostics
 
 	// Parse and apply global view arguments
@@ -121,7 +122,7 @@ func (c *ApplyCommand) Run(rawArgs []string) int {
 	diags = nil
 
 	// Run the operation
-	op, err := c.RunOperation(be, opReq)
+	op, err := c.RunOperation(ctx, be, opReq)
 	if err != nil {
 		diags = diags.Append(err)
 		view.Diagnostics(diags)

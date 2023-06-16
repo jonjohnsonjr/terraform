@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,7 +15,7 @@ type WorkspaceShowCommand struct {
 	Meta
 }
 
-func (c *WorkspaceShowCommand) Run(args []string) int {
+func (c *WorkspaceShowCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.extendedFlagSet("workspace show")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }

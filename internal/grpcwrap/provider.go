@@ -270,7 +270,7 @@ func (p *provider) PlanResourceChange(_ context.Context, req *tfplugin5.PlanReso
 	return resp, nil
 }
 
-func (p *provider) ApplyResourceChange(_ context.Context, req *tfplugin5.ApplyResourceChange_Request) (*tfplugin5.ApplyResourceChange_Response, error) {
+func (p *provider) ApplyResourceChange(ctx context.Context, req *tfplugin5.ApplyResourceChange_Request) (*tfplugin5.ApplyResourceChange_Response, error) {
 	resp := &tfplugin5.ApplyResourceChange_Response{}
 	ty := p.schema.ResourceTypes[req.TypeName].Block.ImpliedType()
 
@@ -299,7 +299,7 @@ func (p *provider) ApplyResourceChange(_ context.Context, req *tfplugin5.ApplyRe
 		return resp, nil
 	}
 
-	applyResp := p.provider.ApplyResourceChange(providers.ApplyResourceChangeRequest{
+	applyResp := p.provider.ApplyResourceChange(ctx, providers.ApplyResourceChangeRequest{
 		TypeName:       req.TypeName,
 		PriorState:     priorStateVal,
 		PlannedState:   plannedStateVal,

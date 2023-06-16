@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
 )
 
 // Apply performs the actions described by the given Plan object and returns
@@ -23,8 +25,11 @@ import (
 //
 // Even if the returned diagnostics contains errors, Apply always returns the
 // resulting state which is likely to have been partially-updated.
-func (c *Context) Apply(plan *plans.Plan, config *configs.Config) (*states.State, tfdiags.Diagnostics) {
-	defer c.acquireRun("apply")()
+func (c *Context) Apply(ctx context.Context, plan *plans.Plan, config *configs.Config) (*states.State, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Context.Apply")
+	defer span.End()
+
+	defer c.acquireRun(ctx, "apply")()
 
 	log.Printf("[DEBUG] Building and walking apply graph for %s plan", plan.UIMode)
 
@@ -51,13 +56,13 @@ func (c *Context) Apply(plan *plans.Plan, config *configs.Config) (*states.State
 		}
 	}
 
-	graph, operation, diags := c.applyGraph(plan, config, true)
+	graph, operation, diags := c.applyGraph(ctx, plan, config, true)
 	if diags.HasErrors() {
 		return nil, diags
 	}
 
 	workingState := plan.PriorState.DeepCopy()
-	walker, walkDiags := c.walk(graph, operation, &graphWalkOpts{
+	walker, walkDiags := c.walk(ctx, graph, operation, &graphWalkOpts{
 		Config:     config,
 		InputState: workingState,
 		Changes:    plan.Changes,
@@ -116,7 +121,10 @@ Note that the -target option is not suitable for routine use, and is provided on
 	return newState, diags
 }
 
-func (c *Context) applyGraph(plan *plans.Plan, config *configs.Config, validate bool) (*Graph, walkOperation, tfdiags.Diagnostics) {
+func (c *Context) applyGraph(ctx context.Context, plan *plans.Plan, config *configs.Config, validate bool) (*Graph, walkOperation, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Context.applyGraph")
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 
 	variables := InputValues{}
@@ -194,13 +202,13 @@ func (c *Context) applyGraph(plan *plans.Plan, config *configs.Config, validate 
 // graph, and so may change in future in order to make the result more useful
 // in that context, even if drifts away from the physical graph that Terraform
 // Core currently uses as an implementation detail of planning.
-func (c *Context) ApplyGraphForUI(plan *plans.Plan, config *configs.Config) (*Graph, tfdiags.Diagnostics) {
+func (c *Context) ApplyGraphForUI(ctx context.Context, plan *plans.Plan, config *configs.Config) (*Graph, tfdiags.Diagnostics) {
 	// For now though, this really is just the internal graph, confusing
 	// implementation details and all.
 
 	var diags tfdiags.Diagnostics
 
-	graph, _, moreDiags := c.applyGraph(plan, config, false)
+	graph, _, moreDiags := c.applyGraph(ctx, plan, config, false)
 	diags = diags.Append(moreDiags)
 	return graph, diags
 }

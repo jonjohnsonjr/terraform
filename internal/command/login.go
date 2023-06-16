@@ -41,7 +41,7 @@ type LoginCommand struct {
 }
 
 // Run implements cli.Command.
-func (c *LoginCommand) Run(args []string) int {
+func (c *LoginCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.extendedFlagSet("login")
 	cmdFlags.Usage = func() { c.Ui.Error(c.Help()) }

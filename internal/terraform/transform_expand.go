@@ -3,6 +3,8 @@
 
 package terraform
 
+import "context"
+
 // GraphNodeDynamicExpandable is an interface that nodes can implement
 // to signal that they can be expanded at eval-time (hence dynamic).
 // These nodes are given the eval context and are expected to return
@@ -16,5 +18,5 @@ type GraphNodeDynamicExpandable interface {
 	// of calling ErrWithWarnings on a tfdiags.Diagnostics value instead,
 	// in which case the caller will unwrap it and gather the individual
 	// diagnostics.
-	DynamicExpand(EvalContext) (*Graph, error)
+	DynamicExpand(context.Context, EvalContext) (*Graph, error)
 }

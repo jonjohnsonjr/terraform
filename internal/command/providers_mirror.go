@@ -4,6 +4,7 @@
 package command
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -30,7 +31,7 @@ func (c *ProvidersMirrorCommand) Synopsis() string {
 	return "Save local copies of all required provider plugins"
 }
 
-func (c *ProvidersMirrorCommand) Run(args []string) int {
+func (c *ProvidersMirrorCommand) Run(ctx context.Context, args []string) int {
 	args = c.Meta.process(args)
 	cmdFlags := c.Meta.defaultFlagSet("providers mirror")
 	var optPlatforms FlagStringSlice

@@ -19,8 +19,16 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+type Span interface {
+	End()
+}
+
 // EvalContext is the interface that is given to eval nodes to execute.
 type EvalContext interface {
+	Span() (EvalContext, Span)
+
+	// TODO: Context()?
+
 	// Stopped returns a channel that is closed when evaluation is stopped
 	// via Terraform.Context.Stop()
 	Stopped() <-chan struct{}

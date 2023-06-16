@@ -78,6 +78,9 @@ type BuiltinEvalContext struct {
 // BuiltinEvalContext implements EvalContext
 var _ EvalContext = (*BuiltinEvalContext)(nil)
 
+func (ctx *BuiltinEvalContext) Span() EvalContext {
+}
+
 func (ctx *BuiltinEvalContext) WithPath(path addrs.ModuleInstance) EvalContext {
 	newCtx := *ctx
 	newCtx.pathSet = true

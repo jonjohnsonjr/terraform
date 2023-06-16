@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
 
 	plugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/terraform/internal/logging"
@@ -81,6 +82,9 @@ func (p *GRPCProvider) getSchema() providers.GetProviderSchemaResponse {
 }
 
 func (p *GRPCProvider) GetProviderSchema() (resp providers.GetProviderSchemaResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "GetProviderSchema")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: GetProviderSchema")
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -101,7 +105,7 @@ func (p *GRPCProvider) GetProviderSchema() (resp providers.GetProviderSchemaResp
 	// size much higher on the server side, which is the supported method for
 	// determining payload size.
 	const maxRecvSize = 64 << 20
-	protoResp, err := p.client.GetSchema(p.ctx, new(proto.GetProviderSchema_Request), grpc.MaxRecvMsgSizeCallOption{MaxRecvMsgSize: maxRecvSize})
+	protoResp, err := p.client.GetSchema(ctx, new(proto.GetProviderSchema_Request), grpc.MaxRecvMsgSizeCallOption{MaxRecvMsgSize: maxRecvSize})
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -143,6 +147,8 @@ func (p *GRPCProvider) GetProviderSchema() (resp providers.GetProviderSchemaResp
 }
 
 func (p *GRPCProvider) ValidateProviderConfig(r providers.ValidateProviderConfigRequest) (resp providers.ValidateProviderConfigResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ValidateProviderConfig")
+	defer span.End()
 	logger.Trace("GRPCProvider: ValidateProviderConfig")
 
 	schema := p.getSchema()
@@ -163,7 +169,7 @@ func (p *GRPCProvider) ValidateProviderConfig(r providers.ValidateProviderConfig
 		Config: &proto.DynamicValue{Msgpack: mp},
 	}
 
-	protoResp, err := p.client.PrepareProviderConfig(p.ctx, protoReq)
+	protoResp, err := p.client.PrepareProviderConfig(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -181,6 +187,9 @@ func (p *GRPCProvider) ValidateProviderConfig(r providers.ValidateProviderConfig
 }
 
 func (p *GRPCProvider) ValidateResourceConfig(r providers.ValidateResourceConfigRequest) (resp providers.ValidateResourceConfigResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ValidateResourceConfig")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ValidateResourceConfig")
 
 	schema := p.getSchema()
@@ -206,7 +215,7 @@ func (p *GRPCProvider) ValidateResourceConfig(r providers.ValidateResourceConfig
 		Config:   &proto.DynamicValue{Msgpack: mp},
 	}
 
-	protoResp, err := p.client.ValidateResourceTypeConfig(p.ctx, protoReq)
+	protoResp, err := p.client.ValidateResourceTypeConfig(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -217,6 +226,9 @@ func (p *GRPCProvider) ValidateResourceConfig(r providers.ValidateResourceConfig
 }
 
 func (p *GRPCProvider) ValidateDataResourceConfig(r providers.ValidateDataResourceConfigRequest) (resp providers.ValidateDataResourceConfigResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ValidateDataResourceConfig")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ValidateDataResourceConfig")
 
 	schema := p.getSchema()
@@ -242,7 +254,7 @@ func (p *GRPCProvider) ValidateDataResourceConfig(r providers.ValidateDataResour
 		Config:   &proto.DynamicValue{Msgpack: mp},
 	}
 
-	protoResp, err := p.client.ValidateDataSourceConfig(p.ctx, protoReq)
+	protoResp, err := p.client.ValidateDataSourceConfig(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -252,6 +264,9 @@ func (p *GRPCProvider) ValidateDataResourceConfig(r providers.ValidateDataResour
 }
 
 func (p *GRPCProvider) UpgradeResourceState(r providers.UpgradeResourceStateRequest) (resp providers.UpgradeResourceStateResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "UpgradeResourceState")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: UpgradeResourceState")
 
 	schema := p.getSchema()
@@ -275,7 +290,7 @@ func (p *GRPCProvider) UpgradeResourceState(r providers.UpgradeResourceStateRequ
 		},
 	}
 
-	protoResp, err := p.client.UpgradeResourceState(p.ctx, protoReq)
+	protoResp, err := p.client.UpgradeResourceState(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -299,6 +314,9 @@ func (p *GRPCProvider) UpgradeResourceState(r providers.UpgradeResourceStateRequ
 }
 
 func (p *GRPCProvider) ConfigureProvider(r providers.ConfigureProviderRequest) (resp providers.ConfigureProviderResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ConfigureProvider")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ConfigureProvider")
 
 	schema := p.getSchema()
@@ -323,7 +341,7 @@ func (p *GRPCProvider) ConfigureProvider(r providers.ConfigureProviderRequest) (
 		},
 	}
 
-	protoResp, err := p.client.Configure(p.ctx, protoReq)
+	protoResp, err := p.client.Configure(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -333,9 +351,12 @@ func (p *GRPCProvider) ConfigureProvider(r providers.ConfigureProviderRequest) (
 }
 
 func (p *GRPCProvider) Stop() error {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "Stop")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: Stop")
 
-	resp, err := p.client.Stop(p.ctx, new(proto.Stop_Request))
+	resp, err := p.client.Stop(ctx, new(proto.Stop_Request))
 	if err != nil {
 		return err
 	}
@@ -347,6 +368,9 @@ func (p *GRPCProvider) Stop() error {
 }
 
 func (p *GRPCProvider) ReadResource(r providers.ReadResourceRequest) (resp providers.ReadResourceResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ReadResource")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ReadResource")
 
 	schema := p.getSchema()
@@ -384,7 +408,7 @@ func (p *GRPCProvider) ReadResource(r providers.ReadResourceRequest) (resp provi
 		protoReq.ProviderMeta = &proto.DynamicValue{Msgpack: metaMP}
 	}
 
-	protoResp, err := p.client.ReadResource(p.ctx, protoReq)
+	protoResp, err := p.client.ReadResource(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -403,6 +427,9 @@ func (p *GRPCProvider) ReadResource(r providers.ReadResourceRequest) (resp provi
 }
 
 func (p *GRPCProvider) PlanResourceChange(r providers.PlanResourceChangeRequest) (resp providers.PlanResourceChangeResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "PlanResourceChange")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: PlanResourceChange")
 
 	schema := p.getSchema()
@@ -463,7 +490,7 @@ func (p *GRPCProvider) PlanResourceChange(r providers.PlanResourceChangeRequest)
 		protoReq.ProviderMeta = &proto.DynamicValue{Msgpack: metaMP}
 	}
 
-	protoResp, err := p.client.PlanResourceChange(p.ctx, protoReq)
+	protoResp, err := p.client.PlanResourceChange(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -489,6 +516,9 @@ func (p *GRPCProvider) PlanResourceChange(r providers.PlanResourceChangeRequest)
 }
 
 func (p *GRPCProvider) ApplyResourceChange(r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ApplyResourceChange")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ApplyResourceChange")
 
 	schema := p.getSchema()
@@ -538,7 +568,7 @@ func (p *GRPCProvider) ApplyResourceChange(r providers.ApplyResourceChangeReques
 		protoReq.ProviderMeta = &proto.DynamicValue{Msgpack: metaMP}
 	}
 
-	protoResp, err := p.client.ApplyResourceChange(p.ctx, protoReq)
+	protoResp, err := p.client.ApplyResourceChange(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -560,6 +590,9 @@ func (p *GRPCProvider) ApplyResourceChange(r providers.ApplyResourceChangeReques
 }
 
 func (p *GRPCProvider) ImportResourceState(r providers.ImportResourceStateRequest) (resp providers.ImportResourceStateResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ImportResourceState")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ImportResourceState")
 
 	schema := p.getSchema()
@@ -573,7 +606,7 @@ func (p *GRPCProvider) ImportResourceState(r providers.ImportResourceStateReques
 		Id:       r.ID,
 	}
 
-	protoResp, err := p.client.ImportResourceState(p.ctx, protoReq)
+	protoResp, err := p.client.ImportResourceState(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -605,6 +638,9 @@ func (p *GRPCProvider) ImportResourceState(r providers.ImportResourceStateReques
 }
 
 func (p *GRPCProvider) ReadDataSource(r providers.ReadDataSourceRequest) (resp providers.ReadDataSourceResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ReadDataSource")
+	defer span.End()
+
 	logger.Trace("GRPCProvider: ReadDataSource")
 
 	schema := p.getSchema()
@@ -642,7 +678,7 @@ func (p *GRPCProvider) ReadDataSource(r providers.ReadDataSourceRequest) (resp p
 		protoReq.ProviderMeta = &proto.DynamicValue{Msgpack: metaMP}
 	}
 
-	protoResp, err := p.client.ReadDataSource(p.ctx, protoReq)
+	protoResp, err := p.client.ReadDataSource(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp

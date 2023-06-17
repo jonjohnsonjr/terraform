@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform/internal/lang"
 	"github.com/hashicorp/terraform/internal/tfdiags"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // nodeExpandApplyableResource handles the first layer of resource
@@ -107,7 +109,7 @@ func (n *NodeApplyableResource) References() []*addrs.Reference {
 
 // GraphNodeExecutable
 func (n *NodeApplyableResource) Execute(ctx context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
-	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Execute")
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NAR.Execute", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
 	defer span.End()
 	if n.Config == nil {
 		// Nothing to do, then.

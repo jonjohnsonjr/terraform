@@ -14,6 +14,8 @@ import (
 	"github.com/hashicorp/terraform/internal/tfdiags"
 	"github.com/zclconf/go-cty/cty"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NodeApplyableProvider represents a provider during an apply.
@@ -27,7 +29,7 @@ var (
 
 // GraphNodeExecutable
 func (n *NodeApplyableProvider) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
-	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Execute")
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NAP.Execute", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
 	defer span.End()
 
 	_, err := ectx.InitProvider(n.Addr)

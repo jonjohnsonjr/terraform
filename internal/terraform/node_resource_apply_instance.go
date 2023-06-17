@@ -16,6 +16,8 @@ import (
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/tfdiags"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NodeApplyableResourceInstance represents a resource instance that is
@@ -116,7 +118,7 @@ func (n *NodeApplyableResourceInstance) AttachDependencies(deps []addrs.ConfigRe
 
 // GraphNodeExecutable
 func (n *NodeApplyableResourceInstance) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
-	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Execute")
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.Execute", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
 	defer span.End()
 
 	addr := n.ResourceInstanceAddr()
@@ -146,15 +148,18 @@ func (n *NodeApplyableResourceInstance) Execute(ctx context.Context, ectx EvalCo
 	// Eval info is different depending on what kind of resource this is
 	switch n.Config.Mode {
 	case addrs.ManagedResourceMode:
-		return n.managedResourceExecute(ectx)
+		return n.managedResourceExecute(ctx, ectx)
 	case addrs.DataResourceMode:
-		return n.dataResourceExecute(ectx)
+		return n.dataResourceExecute(ctx, ectx)
 	default:
 		panic(fmt.Errorf("unsupported resource mode %s", n.Config.Mode))
 	}
 }
 
-func (n *NodeApplyableResourceInstance) dataResourceExecute(ectx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx context.Context, ectx EvalContext) (diags tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.dataResourceExecute", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
@@ -215,7 +220,10 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ectx EvalContext) (d
 	return diags
 }
 
-func (n *NodeApplyableResourceInstance) managedResourceExecute(ectx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx context.Context, ectx EvalContext) (diags tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.managedResourceExecute", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	// Declare a bunch of variables that are used for state during
 	// evaluation. Most of this are written to by-address below.
 	var state *states.ResourceInstanceObject

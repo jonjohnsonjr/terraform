@@ -39,7 +39,7 @@ func (n *nodeReportCheck) ModulePath() addrs.Module {
 	return n.addr.Module
 }
 
-func (n *nodeReportCheck) Execute(ctx context.Context, ectx EvalContext, _ walkOperation) tfdiags.Diagnostics {
+func (n *nodeReportCheck) Execute(_ context.Context, ectx EvalContext, _ walkOperation) tfdiags.Diagnostics {
 	exp := ectx.InstanceExpander()
 	modInsts := exp.ExpandModule(n.ModulePath())
 
@@ -149,7 +149,7 @@ func (n *nodeCheckAssert) Path() addrs.ModuleInstance {
 	return n.addr.Module
 }
 
-func (n *nodeCheckAssert) Execute(ctx context.Context, ectx EvalContext, _ walkOperation) tfdiags.Diagnostics {
+func (n *nodeCheckAssert) Execute(_ context.Context, ectx EvalContext, _ walkOperation) tfdiags.Diagnostics {
 
 	// We only want to actually execute the checks during specific
 	// operations, such as plan and applies.
@@ -194,7 +194,7 @@ var (
 // dependency that can enforce this ordering.
 type nodeCheckStart struct{}
 
-func (n *nodeCheckStart) Execute(ctx context.Context, ectx EvalContext, operation walkOperation) tfdiags.Diagnostics {
+func (n *nodeCheckStart) Execute(_ context.Context, ectx EvalContext, operation walkOperation) tfdiags.Diagnostics {
 	// This node doesn't actually do anything, except simplify the underlying
 	// graph structure.
 	return nil

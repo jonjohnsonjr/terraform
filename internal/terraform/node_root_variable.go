@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -50,7 +51,7 @@ func (n *NodeRootVariable) ReferenceableAddrs() []addrs.Referenceable {
 }
 
 // GraphNodeExecutable
-func (n *NodeRootVariable) Execute(ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
+func (n *NodeRootVariable) Execute(_ context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
 	// Root module variables are special in that they are provided directly
 	// by the caller (usually, the CLI layer) and so we don't really need to
 	// evaluate them in the usual sense, but we do need to process the raw
@@ -94,13 +95,13 @@ func (n *NodeRootVariable) Execute(ctx EvalContext, op walkOperation) tfdiags.Di
 		return diags
 	}
 
-	ctx.SetRootModuleArgument(addr.Variable, finalVal)
+	ectx.SetRootModuleArgument(addr.Variable, finalVal)
 
 	moreDiags = evalVariableValidations(
 		addrs.RootModuleInstance.InputVariable(n.Addr.Name),
 		n.Config,
 		nil, // not set for root module variables
-		ctx,
+		ectx,
 	)
 	diags = diags.Append(moreDiags)
 	return diags

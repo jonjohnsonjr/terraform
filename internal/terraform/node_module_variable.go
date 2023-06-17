@@ -146,7 +146,7 @@ func (n *nodeModuleVariable) ModulePath() addrs.Module {
 }
 
 // GraphNodeExecutable
-func (n *nodeModuleVariable) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *nodeModuleVariable) Execute(_ context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	log.Printf("[TRACE] nodeModuleVariable: evaluating %s", n.Addr)
 
 	var val cty.Value

@@ -305,7 +305,7 @@ func (n *NodeApplyableOutput) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeApplyableOutput) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableOutput) Execute(_ context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	state := ectx.State()
 	if state == nil {
 		return
@@ -454,7 +454,7 @@ func (n *NodeDestroyableOutput) temporaryValue() bool {
 }
 
 // GraphNodeExecutable
-func (n *NodeDestroyableOutput) Execute(ctx context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
+func (n *NodeDestroyableOutput) Execute(_ context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
 	state := ectx.State()
 	if state == nil {
 		return nil

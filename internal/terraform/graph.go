@@ -41,7 +41,7 @@ func (g *Graph) Walk(ctx context.Context, walker GraphWalker) tfdiags.Diagnostic
 
 func (g *Graph) walk(ctx context.Context, walker GraphWalker) tfdiags.Diagnostics {
 	// The callbacks for enter/exiting a graph
-	ectx := walker.EvalContext(ctx)
+	ectx := walker.EvalContext()
 
 	// Walk the graph.
 	walkFn := func(v dag.Vertex) (diags tfdiags.Diagnostics) {

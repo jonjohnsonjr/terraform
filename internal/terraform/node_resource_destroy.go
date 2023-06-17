@@ -136,7 +136,7 @@ func (n *NodeDestroyResourceInstance) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeDestroyResourceInstance) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeDestroyResourceInstance) Execute(_ context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
 	// Eval info is different depending on what kind of resource this is

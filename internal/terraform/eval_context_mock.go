@@ -156,6 +156,11 @@ type MockEvalContext struct {
 // MockEvalContext implements EvalContext
 var _ EvalContext = (*MockEvalContext)(nil)
 
+func (c *MockEvalContext) Span(string) (EvalContext, Span) {
+	newC := *c
+	return &newC, &span{}
+}
+
 func (c *MockEvalContext) Stopped() <-chan struct{} {
 	c.StoppedCalled = true
 	return c.StoppedValue

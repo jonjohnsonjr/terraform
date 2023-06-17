@@ -25,9 +25,7 @@ type Span interface {
 
 // EvalContext is the interface that is given to eval nodes to execute.
 type EvalContext interface {
-	Span() (EvalContext, Span)
-
-	// TODO: Context()?
+	Span(string) (EvalContext, Span)
 
 	// Stopped returns a channel that is closed when evaluation is stopped
 	// via Terraform.Context.Stop()

@@ -11,6 +11,8 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/checks"
@@ -78,7 +80,20 @@ type BuiltinEvalContext struct {
 // BuiltinEvalContext implements EvalContext
 var _ EvalContext = (*BuiltinEvalContext)(nil)
 
-func (ctx *BuiltinEvalContext) Span() EvalContext {
+type span struct {
+	ospan trace.Span
+}
+
+func (s *span) End() {
+	s.ospan.End()
+}
+
+func (ctx *BuiltinEvalContext) Span(s string) (EvalContext, Span) {
+	newCtx := *ctx
+
+	sctx, ospan := otel.Tracer("github.com/hashicorp/terraform").Start(newCtx.StopContext, s)
+	newCtx.StopContext = sctx
+	return &newCtx, &span{ospan}
 }
 
 func (ctx *BuiltinEvalContext) WithPath(path addrs.ModuleInstance) EvalContext {

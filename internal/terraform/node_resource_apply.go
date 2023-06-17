@@ -105,6 +105,8 @@ func (n *NodeApplyableResource) References() []*addrs.Reference {
 
 // GraphNodeExecutable
 func (n *NodeApplyableResource) Execute(ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
+	ctx, span := ctx.Span("Execute")
+	defer span.End()
 	if n.Config == nil {
 		// Nothing to do, then.
 		log.Printf("[TRACE] NodeApplyableResource: no configuration present for %s", n.Name())

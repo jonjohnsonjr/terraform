@@ -79,7 +79,7 @@ func (c *Context) Eval(ctx context.Context, config *configs.Config, state *state
 		Config:     config,
 	}
 
-	walker, moreDiags = c.walk(graph, walkEval, walkOpts)
+	walker, moreDiags = c.walk(ctx, graph, walkEval, walkOpts)
 	diags = diags.Append(moreDiags)
 	if walker != nil {
 		diags = diags.Append(walker.NonFatalDiagnostics)

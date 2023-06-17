@@ -106,7 +106,7 @@ func (b *Local) opPlan(
 		defer logging.PanicHandler()
 		defer close(doneCh)
 		log.Printf("[INFO] backend/local: plan calling Plan")
-		plan, planDiags = lr.Core.Plan(lr.Config, lr.InputState, lr.PlanOpts)
+		plan, planDiags = lr.Core.Plan(stopCtx, lr.Config, lr.InputState, lr.PlanOpts)
 	}()
 
 	if b.opWait(doneCh, stopCtx, cancelCtx, lr.Core, opState, op.View) {

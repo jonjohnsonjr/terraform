@@ -71,12 +71,12 @@ func (w *ContextGraphWalker) EnterPath(path addrs.ModuleInstance) EvalContext {
 		return ctx
 	}
 
-	ctx := w.EvalContext().WithPath(path)
+	ctx := w.EvalContext(w.StopContext).WithPath(path)
 	w.contexts[key] = ctx.(*BuiltinEvalContext)
 	return ctx
 }
 
-func (w *ContextGraphWalker) EvalContext() EvalContext {
+func (w *ContextGraphWalker) EvalContext(ctx context.Context) EvalContext {
 	w.once.Do(w.init)
 
 	// Our evaluator shares some locks with the main context and the walker
@@ -94,7 +94,7 @@ func (w *ContextGraphWalker) EvalContext() EvalContext {
 		PlanTimestamp:      w.PlanTimestamp,
 	}
 
-	ctx := &BuiltinEvalContext{
+	ectx := &BuiltinEvalContext{
 		StopContext:           w.StopContext,
 		Hooks:                 w.Context.hooks,
 		InputValue:            w.Context.uiInput,
@@ -116,7 +116,9 @@ func (w *ContextGraphWalker) EvalContext() EvalContext {
 		VariableValuesLock:    &w.variableValuesLock,
 	}
 
-	return ctx
+	ectx.StopContext = ctx
+
+	return ectx
 }
 
 func (w *ContextGraphWalker) init() {

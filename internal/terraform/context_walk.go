@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -44,7 +45,7 @@ type graphWalkOpts struct {
 	MoveResults refactoring.MoveResults
 }
 
-func (c *Context) walk(graph *Graph, operation walkOperation, opts *graphWalkOpts) (*ContextGraphWalker, tfdiags.Diagnostics) {
+func (c *Context) walk(ctx context.Context, graph *Graph, operation walkOperation, opts *graphWalkOpts) (*ContextGraphWalker, tfdiags.Diagnostics) {
 	log.Printf("[DEBUG] Starting graph walk: %s", operation.String())
 
 	walker := c.graphWalker(operation, opts)
@@ -53,7 +54,7 @@ func (c *Context) walk(graph *Graph, operation walkOperation, opts *graphWalkOpt
 	watchStop, watchWait := c.watchStop(walker)
 
 	// Walk the real graph, this will block until it completes
-	diags := graph.Walk(walker)
+	diags := graph.Walk(ctx, walker)
 
 	// Close the channel so the watcher stops, and wait for it to return.
 	close(watchStop)

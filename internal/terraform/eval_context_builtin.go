@@ -91,7 +91,7 @@ func (s *span) End() {
 func (ctx *BuiltinEvalContext) Span(s string) (EvalContext, Span) {
 	newCtx := *ctx
 
-	sctx, ospan := otel.Tracer("github.com/hashicorp/terraform").Start(newCtx.StopContext, s)
+	sctx, ospan := otel.Tracer("github.com/hashicorp/terraform").Start(ctx.StopContext, s)
 	newCtx.StopContext = sctx
 	return &newCtx, &span{ospan}
 }

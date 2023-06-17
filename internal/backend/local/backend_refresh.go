@@ -92,7 +92,7 @@ func (b *Local) opRefresh(
 	go func() {
 		defer logging.PanicHandler()
 		defer close(doneCh)
-		newState, refreshDiags = lr.Core.Refresh(lr.Config, lr.InputState, lr.PlanOpts)
+		newState, refreshDiags = lr.Core.Refresh(stopCtx, lr.Config, lr.InputState, lr.PlanOpts)
 		log.Printf("[INFO] backend/local: refresh calling Refresh")
 	}()
 

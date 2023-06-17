@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -54,9 +55,9 @@ func (n *nodeExpandOutput) temporaryValue() bool {
 	return !n.Module.IsRoot()
 }
 
-func (n *nodeExpandOutput) DynamicExpand(ctx EvalContext) (*Graph, error) {
-	expander := ctx.InstanceExpander()
-	changes := ctx.Changes()
+func (n *nodeExpandOutput) DynamicExpand(ectx EvalContext) (*Graph, error) {
+	expander := ectx.InstanceExpander()
+	changes := ectx.Changes()
 
 	// If this is an output value that participates in custom condition checks
 	// (i.e. it has preconditions or postconditions) then the check state
@@ -72,7 +73,7 @@ func (n *nodeExpandOutput) DynamicExpand(ctx EvalContext) (*Graph, error) {
 	// of those objects will have changed.
 	var checkableAddrs addrs.Set[addrs.Checkable]
 	if n.Planning {
-		if checkState := ctx.Checks(); checkState.ConfigHasChecks(n.Addr.InModule(n.Module)) {
+		if checkState := ectx.Checks(); checkState.ConfigHasChecks(n.Addr.InModule(n.Module)) {
 			checkableAddrs = addrs.MakeSet[addrs.Checkable]()
 		}
 	}
@@ -129,7 +130,7 @@ func (n *nodeExpandOutput) DynamicExpand(ctx EvalContext) (*Graph, error) {
 	addRootNodeToGraph(&g)
 
 	if checkableAddrs != nil {
-		checkState := ctx.Checks()
+		checkState := ectx.Checks()
 		checkState.ReportCheckableObjects(n.Addr.InModule(n.Module), checkableAddrs)
 	}
 
@@ -304,13 +305,13 @@ func (n *NodeApplyableOutput) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeApplyableOutput) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
-	state := ctx.State()
+func (n *NodeApplyableOutput) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+	state := ectx.State()
 	if state == nil {
 		return
 	}
 
-	changes := ctx.Changes() // may be nil, if we're not working on a changeset
+	changes := ectx.Changes() // may be nil, if we're not working on a changeset
 
 	val := cty.UnknownVal(cty.DynamicPseudoType)
 	changeRecorded := n.Change != nil
@@ -334,7 +335,7 @@ func (n *NodeApplyableOutput) Execute(ctx EvalContext, op walkOperation) (diags 
 		checkDiags := evalCheckRules(
 			addrs.OutputPrecondition,
 			n.Config.Preconditions,
-			ctx, n.Addr, EvalDataForNoInstanceKey,
+			ectx, n.Addr, EvalDataForNoInstanceKey,
 			checkRuleSeverity,
 		)
 		diags = diags.Append(checkDiags)
@@ -349,13 +350,13 @@ func (n *NodeApplyableOutput) Execute(ctx EvalContext, op walkOperation) (diags 
 		// This has to run before we have a state lock, since evaluation also
 		// reads the state
 		var evalDiags tfdiags.Diagnostics
-		val, evalDiags = ctx.EvaluateExpr(n.Config.Expr, cty.DynamicPseudoType, nil)
+		val, evalDiags = ectx.EvaluateExpr(n.Config.Expr, cty.DynamicPseudoType, nil)
 		diags = diags.Append(evalDiags)
 
 		// We'll handle errors below, after we have loaded the module.
 		// Outputs don't have a separate mode for validation, so validate
 		// depends_on expressions here too
-		diags = diags.Append(validateDependsOn(ctx, n.Config.DependsOn))
+		diags = diags.Append(validateDependsOn(ectx, n.Config.DependsOn))
 
 		// For root module outputs in particular, an output value must be
 		// statically declared as sensitive in order to dynamically return
@@ -407,7 +408,7 @@ If you do intend to export this data, annotate the output value as sensitive by 
 
 	// If we were able to evaluate a new value, we can update that in the
 	// refreshed state as well.
-	if state = ctx.RefreshState(); state != nil && val.IsWhollyKnown() {
+	if state = ectx.RefreshState(); state != nil && val.IsWhollyKnown() {
 		// we only need to update the state, do not pass in the changes again
 		n.setValue(state, nil, val)
 	}
@@ -453,8 +454,8 @@ func (n *NodeDestroyableOutput) temporaryValue() bool {
 }
 
 // GraphNodeExecutable
-func (n *NodeDestroyableOutput) Execute(ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
-	state := ctx.State()
+func (n *NodeDestroyableOutput) Execute(ctx context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
+	state := ectx.State()
 	if state == nil {
 		return nil
 	}
@@ -476,7 +477,7 @@ func (n *NodeDestroyableOutput) Execute(ctx EvalContext, op walkOperation) tfdia
 		}
 	}
 
-	changes := ctx.Changes()
+	changes := ectx.Changes()
 	if changes != nil && n.Planning {
 		change := &plans.OutputChange{
 			Addr:      n.Addr,

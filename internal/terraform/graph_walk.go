@@ -16,7 +16,7 @@ type GraphWalker interface {
 	EvalContext(context.Context) EvalContext
 	EnterPath(addrs.ModuleInstance) EvalContext
 	ExitPath(addrs.ModuleInstance)
-	Execute(EvalContext, GraphNodeExecutable) tfdiags.Diagnostics
+	Execute(context.Context, EvalContext, GraphNodeExecutable) tfdiags.Diagnostics
 }
 
 // NullGraphWalker is a GraphWalker implementation that does nothing.

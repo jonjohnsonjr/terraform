@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -42,7 +43,7 @@ func (n *NodePlanDestroyableResourceInstance) DestroyAddr() *addrs.AbsResourceIn
 }
 
 // GraphNodeEvalable
-func (n *NodePlanDestroyableResourceInstance) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodePlanDestroyableResourceInstance) Execute(_ context.Context, ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
 	switch addr.Resource.Resource.Mode {

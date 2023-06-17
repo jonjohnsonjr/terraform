@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -69,7 +70,7 @@ func (n *graphNodeImportState) ModulePath() addrs.Module {
 }
 
 // GraphNodeExecutable impl.
-func (n *graphNodeImportState) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *graphNodeImportState) Execute(_ context.Context, ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	// Reset our states
 	n.states = nil
 
@@ -208,7 +209,7 @@ func (n *graphNodeImportStateSub) Path() addrs.ModuleInstance {
 }
 
 // GraphNodeExecutable impl.
-func (n *graphNodeImportStateSub) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *graphNodeImportStateSub) Execute(_ context.Context, ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	// If the Ephemeral type isn't set, then it is an error
 	if n.State.TypeName == "" {
 		diags = diags.Append(fmt.Errorf("import of %s didn't set type", n.TargetAddr.String()))

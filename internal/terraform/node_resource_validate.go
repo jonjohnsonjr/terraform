@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -43,7 +44,7 @@ func (n *NodeValidatableResource) Path() addrs.ModuleInstance {
 }
 
 // GraphNodeEvalable
-func (n *NodeValidatableResource) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeValidatableResource) Execute(_ context.Context, ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	if n.Config == nil {
 		return diags
 	}

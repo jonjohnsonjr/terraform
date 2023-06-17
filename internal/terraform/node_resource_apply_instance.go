@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform/internal/plans/objchange"
 	"github.com/hashicorp/terraform/internal/states"
 	"github.com/hashicorp/terraform/internal/tfdiags"
+	"go.opentelemetry.io/otel"
 )
 
 // NodeApplyableResourceInstance represents a resource instance that is
@@ -113,14 +115,17 @@ func (n *NodeApplyableResourceInstance) AttachDependencies(deps []addrs.ConfigRe
 }
 
 // GraphNodeExecutable
-func (n *NodeApplyableResourceInstance) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableResourceInstance) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Execute")
+	defer span.End()
+
 	addr := n.ResourceInstanceAddr()
 
 	if n.Config == nil {
 		// If there is no config, and there is no change, then we have nothing
 		// to do and the change was left in the plan for informational
 		// purposes only.
-		changes := ctx.Changes()
+		changes := ectx.Changes()
 		csrc := changes.GetResourceInstanceChange(n.ResourceInstanceAddr(), states.CurrentGen)
 		if csrc == nil || csrc.Action == plans.NoOp {
 			log.Printf("[DEBUG] NodeApplyableResourceInstance: No config or planned change recorded for %s", n.Addr)
@@ -141,22 +146,22 @@ func (n *NodeApplyableResourceInstance) Execute(ctx EvalContext, op walkOperatio
 	// Eval info is different depending on what kind of resource this is
 	switch n.Config.Mode {
 	case addrs.ManagedResourceMode:
-		return n.managedResourceExecute(ctx)
+		return n.managedResourceExecute(ectx)
 	case addrs.DataResourceMode:
-		return n.dataResourceExecute(ctx)
+		return n.dataResourceExecute(ectx)
 	default:
 		panic(fmt.Errorf("unsupported resource mode %s", n.Config.Mode))
 	}
 }
 
-func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx EvalContext) (diags tfdiags.Diagnostics) {
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+func (n *NodeApplyableResourceInstance) dataResourceExecute(ectx EvalContext) (diags tfdiags.Diagnostics) {
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
 	}
 
-	change, err := n.readDiff(ctx, providerSchema)
+	change, err := n.readDiff(ectx, providerSchema)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
@@ -172,7 +177,7 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx EvalContext) (di
 	// In this particular call to applyDataSource we include our planned
 	// change, which signals that we expect this read to complete fully
 	// with no unknown values; it'll produce an error if not.
-	state, repeatData, applyDiags := n.applyDataSource(ctx, change)
+	state, repeatData, applyDiags := n.applyDataSource(ectx, change)
 	diags = diags.Append(applyDiags)
 	if diags.HasErrors() {
 		return diags
@@ -184,15 +189,15 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx EvalContext) (di
 		// actually reading the data (e.g. because it was already read during
 		// the plan phase) and so we're only running through here to get the
 		// extra details like precondition/postcondition checks.
-		diags = diags.Append(n.writeResourceInstanceState(ctx, state, workingState))
+		diags = diags.Append(n.writeResourceInstanceState(ectx, state, workingState))
 		if diags.HasErrors() {
 			return diags
 		}
 	}
 
-	diags = diags.Append(n.writeChange(ctx, nil, ""))
+	diags = diags.Append(n.writeChange(ectx, nil, ""))
 
-	diags = diags.Append(updateStateHook(ctx))
+	diags = diags.Append(updateStateHook(ectx))
 
 	// Post-conditions might block further progress. We intentionally do this
 	// _after_ writing the state/diff because we want to check against
@@ -201,7 +206,7 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx EvalContext) (di
 	checkDiags := evalCheckRules(
 		addrs.ResourcePostcondition,
 		n.Config.Postconditions,
-		ctx, n.ResourceInstanceAddr(),
+		ectx, n.ResourceInstanceAddr(),
 		repeatData,
 		tfdiags.Error,
 	)
@@ -210,7 +215,7 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx EvalContext) (di
 	return diags
 }
 
-func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableResourceInstance) managedResourceExecute(ectx EvalContext) (diags tfdiags.Diagnostics) {
 	// Declare a bunch of variables that are used for state during
 	// evaluation. Most of this are written to by-address below.
 	var state *states.ResourceInstanceObject
@@ -218,14 +223,14 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 	var deposedKey states.DeposedKey
 
 	addr := n.ResourceInstanceAddr().Resource
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
 	}
 
 	// Get the saved diff for apply
-	diffApply, err := n.readDiff(ctx, providerSchema)
+	diffApply, err := n.readDiff(ectx, providerSchema)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
@@ -249,7 +254,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 	}
 
 	if createBeforeDestroyEnabled {
-		state := ctx.State()
+		state := ectx.State()
 		if n.PreallocatedDeposedKey == states.NotDeposed {
 			deposedKey = state.DeposeResourceInstanceObject(n.Addr)
 		} else {
@@ -259,14 +264,14 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 		log.Printf("[TRACE] managedResourceExecute: prior object for %s now deposed with key %s", n.Addr, deposedKey)
 	}
 
-	state, readDiags := n.readResourceInstanceState(ctx, n.ResourceInstanceAddr())
+	state, readDiags := n.readResourceInstanceState(ectx, n.ResourceInstanceAddr())
 	diags = diags.Append(readDiags)
 	if diags.HasErrors() {
 		return diags
 	}
 
 	// Get the saved diff
-	diff, err := n.readDiff(ctx, providerSchema)
+	diff, err := n.readDiff(ectx, providerSchema)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
@@ -274,14 +279,14 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 
 	// Make a new diff, in case we've learned new values in the state
 	// during apply which we can now incorporate.
-	diffApply, _, repeatData, planDiags := n.plan(ctx, diff, state, false, n.forceReplace)
+	diffApply, _, repeatData, planDiags := n.plan(ectx, diff, state, false, n.forceReplace)
 	diags = diags.Append(planDiags)
 	if diags.HasErrors() {
 		return diags
 	}
 
 	// Compare the diffs
-	diags = diags.Append(n.checkPlannedChange(ctx, diff, diffApply, providerSchema))
+	diags = diags.Append(n.checkPlannedChange(ectx, diff, diffApply, providerSchema))
 	if diags.HasErrors() {
 		return diags
 	}
@@ -294,7 +299,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 	// need to deal with other book-keeping such as marking the
 	// change as "complete", and running the author's postconditions.
 
-	diags = diags.Append(n.preApplyHook(ctx, diffApply))
+	diags = diags.Append(n.preApplyHook(ectx, diffApply))
 	if diags.HasErrors() {
 		return diags
 	}
@@ -302,39 +307,39 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 	// If there is no change, there was nothing to apply, and we don't need to
 	// re-write the state, but we do need to re-evaluate postconditions.
 	if diffApply.Action == plans.NoOp {
-		return diags.Append(n.managedResourcePostconditions(ctx, repeatData))
+		return diags.Append(n.managedResourcePostconditions(ectx, repeatData))
 	}
 
-	state, applyDiags := n.apply(ctx, state, diffApply, n.Config, repeatData, n.CreateBeforeDestroy())
+	state, applyDiags := n.apply(ectx, state, diffApply, n.Config, repeatData, n.CreateBeforeDestroy())
 	diags = diags.Append(applyDiags)
 
 	// We clear the change out here so that future nodes don't see a change
 	// that is already complete.
-	err = n.writeChange(ctx, nil, "")
+	err = n.writeChange(ectx, nil, "")
 	if err != nil {
 		return diags.Append(err)
 	}
 
-	state = maybeTainted(addr.Absolute(ctx.Path()), state, diffApply, diags.Err())
+	state = maybeTainted(addr.Absolute(ectx.Path()), state, diffApply, diags.Err())
 
 	if state != nil {
 		// dependencies are always updated to match the configuration during apply
 		state.Dependencies = n.Dependencies
 	}
-	err = n.writeResourceInstanceState(ctx, state, workingState)
+	err = n.writeResourceInstanceState(ectx, state, workingState)
 	if err != nil {
 		return diags.Append(err)
 	}
 
 	// Run Provisioners
 	createNew := (diffApply.Action == plans.Create || diffApply.Action.IsReplace())
-	applyProvisionersDiags := n.evalApplyProvisioners(ctx, state, createNew, configs.ProvisionerWhenCreate)
+	applyProvisionersDiags := n.evalApplyProvisioners(ectx, state, createNew, configs.ProvisionerWhenCreate)
 	// the provisioner errors count as port of the apply error, so we can bundle the diags
 	diags = diags.Append(applyProvisionersDiags)
 
-	state = maybeTainted(addr.Absolute(ctx.Path()), state, diffApply, diags.Err())
+	state = maybeTainted(addr.Absolute(ectx.Path()), state, diffApply, diags.Err())
 
-	err = n.writeResourceInstanceState(ctx, state, workingState)
+	err = n.writeResourceInstanceState(ectx, state, workingState)
 	if err != nil {
 		return diags.Append(err)
 	}
@@ -364,7 +369,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 				))
 			}
 		} else {
-			restored := ctx.State().MaybeRestoreResourceInstanceDeposed(addr.Absolute(ctx.Path()), deposedKey)
+			restored := ectx.State().MaybeRestoreResourceInstanceDeposed(addr.Absolute(ectx.Path()), deposedKey)
 			if restored {
 				log.Printf("[TRACE] managedResourceExecute: %s deposed object %s was restored as the current object", addr, deposedKey)
 			} else {
@@ -373,22 +378,22 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 		}
 	}
 
-	diags = diags.Append(n.postApplyHook(ctx, state, diags.Err()))
-	diags = diags.Append(updateStateHook(ctx))
+	diags = diags.Append(n.postApplyHook(ectx, state, diags.Err()))
+	diags = diags.Append(updateStateHook(ectx))
 
 	// Post-conditions might block further progress. We intentionally do this
 	// _after_ writing the state because we want to check against
 	// the result of the operation, and to fail on future operations
 	// until the user makes the condition succeed.
-	return diags.Append(n.managedResourcePostconditions(ctx, repeatData))
+	return diags.Append(n.managedResourcePostconditions(ectx, repeatData))
 }
 
-func (n *NodeApplyableResourceInstance) managedResourcePostconditions(ctx EvalContext, repeatData instances.RepetitionData) (diags tfdiags.Diagnostics) {
+func (n *NodeApplyableResourceInstance) managedResourcePostconditions(ectx EvalContext, repeatData instances.RepetitionData) (diags tfdiags.Diagnostics) {
 
 	checkDiags := evalCheckRules(
 		addrs.ResourcePostcondition,
 		n.Config.Postconditions,
-		ctx, n.ResourceInstanceAddr(), repeatData,
+		ectx, n.ResourceInstanceAddr(), repeatData,
 		tfdiags.Error,
 	)
 	return diags.Append(checkDiags)
@@ -400,7 +405,7 @@ func (n *NodeApplyableResourceInstance) managedResourcePostconditions(ctx EvalCo
 // Errors here are most often indicative of a bug in the provider, so our error
 // messages will report with that in mind. It's also possible that there's a bug
 // in Terraform's Core's own "proposed new value" code in EvalDiff.
-func (n *NodeApplyableResourceInstance) checkPlannedChange(ctx EvalContext, plannedChange, actualChange *plans.ResourceInstanceChange, providerSchema *ProviderSchema) tfdiags.Diagnostics {
+func (n *NodeApplyableResourceInstance) checkPlannedChange(ectx EvalContext, plannedChange, actualChange *plans.ResourceInstanceChange, providerSchema *ProviderSchema) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 	addr := n.ResourceInstanceAddr().Resource
 
@@ -411,7 +416,7 @@ func (n *NodeApplyableResourceInstance) checkPlannedChange(ctx EvalContext, plan
 		return diags
 	}
 
-	absAddr := addr.Absolute(ctx.Path())
+	absAddr := addr.Absolute(ectx.Path())
 
 	log.Printf("[TRACE] checkPlannedChange: Verifying that actual change (action %s) matches planned change (action %s)", actualChange.Action, plannedChange.Action)
 

@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -65,9 +66,9 @@ func (n *nodeExpandLocal) References() []*addrs.Reference {
 	return refs
 }
 
-func (n *nodeExpandLocal) DynamicExpand(ctx EvalContext) (*Graph, error) {
+func (n *nodeExpandLocal) DynamicExpand(ectx EvalContext) (*Graph, error) {
 	var g Graph
-	expander := ctx.InstanceExpander()
+	expander := ectx.InstanceExpander()
 	for _, module := range expander.ExpandModule(n.Module) {
 		o := &NodeLocal{
 			Addr:   n.Addr.Absolute(module),
@@ -132,7 +133,7 @@ func (n *NodeLocal) References() []*addrs.Reference {
 // NodeLocal.Execute is an Execute implementation that evaluates the
 // expression for a local value and writes it into a transient part of
 // the state.
-func (n *NodeLocal) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeLocal) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	expr := n.Config.Expr
 	addr := n.Addr.LocalValue
 
@@ -154,19 +155,19 @@ func (n *NodeLocal) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Di
 		return diags
 	}
 
-	val, moreDiags := ctx.EvaluateExpr(expr, cty.DynamicPseudoType, nil)
+	val, moreDiags := ectx.EvaluateExpr(expr, cty.DynamicPseudoType, nil)
 	diags = diags.Append(moreDiags)
 	if moreDiags.HasErrors() {
 		return diags
 	}
 
-	state := ctx.State()
+	state := ectx.State()
 	if state == nil {
 		diags = diags.Append(fmt.Errorf("cannot write local value to nil state"))
 		return diags
 	}
 
-	state.SetLocalValue(addr.Absolute(ctx.Path()), val)
+	state.SetLocalValue(addr.Absolute(ectx.Path()), val)
 
 	return diags
 }

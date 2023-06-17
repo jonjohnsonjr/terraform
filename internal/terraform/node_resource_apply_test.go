@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -26,7 +27,7 @@ func TestNodeApplyableResourceExecute(t *testing.T) {
 			},
 			Addr: mustAbsResourceAddr("test_instance.foo"),
 		}
-		diags := node.Execute(ctx, walkApply)
+		diags := node.Execute(context.TODO(), ctx, walkApply)
 		if diags.HasErrors() {
 			t.Fatalf("unexpected error: %s", diags.Err())
 		}
@@ -51,7 +52,7 @@ func TestNodeApplyableResourceExecute(t *testing.T) {
 			},
 			Addr: mustAbsResourceAddr("test_instance.foo"),
 		}
-		diags := node.Execute(ctx, walkApply)
+		diags := node.Execute(context.TODO(), ctx, walkApply)
 		if diags.HasErrors() {
 			t.Fatalf("unexpected error: %s", diags.Err())
 		}

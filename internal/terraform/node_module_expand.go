@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"log"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -102,18 +103,18 @@ func (n *nodeExpandModule) ReferenceOutside() (selfPath, referencePath addrs.Mod
 }
 
 // GraphNodeExecutable
-func (n *nodeExpandModule) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
-	expander := ctx.InstanceExpander()
+func (n *nodeExpandModule) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+	expander := ectx.InstanceExpander()
 	_, call := n.Addr.Call()
 
 	// nodeExpandModule itself does not have visibility into how its ancestors
 	// were expanded, so we use the expander here to provide all possible paths
 	// to our module, and register module instances with each of them.
 	for _, module := range expander.ExpandModule(n.Addr.Parent()) {
-		ctx = ctx.WithPath(module)
+		ectx = ectx.WithPath(module)
 		switch {
 		case n.ModuleCall.Count != nil:
-			count, ctDiags := evaluateCountExpression(n.ModuleCall.Count, ctx)
+			count, ctDiags := evaluateCountExpression(n.ModuleCall.Count, ectx)
 			diags = diags.Append(ctDiags)
 			if diags.HasErrors() {
 				return diags
@@ -121,7 +122,7 @@ func (n *nodeExpandModule) Execute(ctx EvalContext, op walkOperation) (diags tfd
 			expander.SetModuleCount(module, call, count)
 
 		case n.ModuleCall.ForEach != nil:
-			forEach, feDiags := evaluateForEachExpression(n.ModuleCall.ForEach, ctx)
+			forEach, feDiags := evaluateForEachExpression(n.ModuleCall.ForEach, ectx)
 			diags = diags.Append(feDiags)
 			if diags.HasErrors() {
 				return diags
@@ -178,19 +179,19 @@ func (n *nodeCloseModule) Name() string {
 	return n.Addr.String() + " (close)"
 }
 
-func (n *nodeCloseModule) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *nodeCloseModule) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	if !n.Addr.IsRoot() {
 		return
 	}
 
 	// If this is the root module, we are cleaning up the walk, so close
 	// any running provisioners
-	diags = diags.Append(ctx.CloseProvisioners())
+	diags = diags.Append(ectx.CloseProvisioners())
 
 	switch op {
 	case walkApply, walkDestroy:
-		state := ctx.State().Lock()
-		defer ctx.State().Unlock()
+		state := ectx.State().Lock()
+		defer ectx.State().Unlock()
 
 		for modKey, mod := range state.Modules {
 			// clean out any empty resources
@@ -221,31 +222,31 @@ type nodeValidateModule struct {
 var _ GraphNodeExecutable = (*nodeValidateModule)(nil)
 
 // GraphNodeEvalable
-func (n *nodeValidateModule) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *nodeValidateModule) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	_, call := n.Addr.Call()
-	expander := ctx.InstanceExpander()
+	expander := ectx.InstanceExpander()
 
 	// Modules all evaluate to single instances during validation, only to
 	// create a proper context within which to evaluate. All parent modules
 	// will be a single instance, but still get our address in the expected
 	// manner anyway to ensure they've been registered correctly.
 	for _, module := range expander.ExpandModule(n.Addr.Parent()) {
-		ctx = ctx.WithPath(module)
+		ectx = ectx.WithPath(module)
 
 		// Validate our for_each and count expressions at a basic level
 		// We skip validation on known, because there will be unknown values before
 		// a full expansion, presuming these errors will be caught in later steps
 		switch {
 		case n.ModuleCall.Count != nil:
-			_, countDiags := evaluateCountExpressionValue(n.ModuleCall.Count, ctx)
+			_, countDiags := evaluateCountExpressionValue(n.ModuleCall.Count, ectx)
 			diags = diags.Append(countDiags)
 
 		case n.ModuleCall.ForEach != nil:
-			_, forEachDiags := evaluateForEachExpressionValue(n.ModuleCall.ForEach, ctx, true)
+			_, forEachDiags := evaluateForEachExpressionValue(n.ModuleCall.ForEach, ectx, true)
 			diags = diags.Append(forEachDiags)
 		}
 
-		diags = diags.Append(validateDependsOn(ctx, n.ModuleCall.DependsOn))
+		diags = diags.Append(validateDependsOn(ectx, n.ModuleCall.DependsOn))
 
 		// now set our own mode to single
 		expander.SetModuleSingle(module, call)

@@ -4,12 +4,14 @@
 package terraform
 
 import (
+	"context"
 	"log"
 
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/dag"
 	"github.com/hashicorp/terraform/internal/lang"
 	"github.com/hashicorp/terraform/internal/tfdiags"
+	"go.opentelemetry.io/otel"
 )
 
 // nodeExpandApplyableResource handles the first layer of resource
@@ -104,8 +106,8 @@ func (n *NodeApplyableResource) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeApplyableResource) Execute(ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
-	ctx, span := ctx.Span("Execute")
+func (n *NodeApplyableResource) Execute(ctx context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Execute")
 	defer span.End()
 	if n.Config == nil {
 		// Nothing to do, then.
@@ -113,5 +115,5 @@ func (n *NodeApplyableResource) Execute(ctx EvalContext, op walkOperation) tfdia
 		return nil
 	}
 
-	return n.writeResourceState(ctx, n.Addr)
+	return n.writeResourceState(ectx, n.Addr)
 }

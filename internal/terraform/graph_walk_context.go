@@ -137,10 +137,10 @@ func (w *ContextGraphWalker) init() {
 	}
 }
 
-func (w *ContextGraphWalker) Execute(ctx EvalContext, n GraphNodeExecutable) tfdiags.Diagnostics {
+func (w *ContextGraphWalker) Execute(ctx context.Context, ectx EvalContext, n GraphNodeExecutable) tfdiags.Diagnostics {
 	// Acquire a lock on the semaphore
 	w.Context.parallelSem.Acquire()
 	defer w.Context.parallelSem.Release()
 
-	return n.Execute(ctx, w.Operation)
+	return n.Execute(ctx, ectx, w.Operation)
 }

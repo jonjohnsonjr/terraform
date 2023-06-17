@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -41,9 +42,9 @@ func (n *nodeExpandModuleVariable) temporaryValue() bool {
 	return true
 }
 
-func (n *nodeExpandModuleVariable) DynamicExpand(ctx EvalContext) (*Graph, error) {
+func (n *nodeExpandModuleVariable) DynamicExpand(ectx EvalContext) (*Graph, error) {
 	var g Graph
-	expander := ctx.InstanceExpander()
+	expander := ectx.InstanceExpander()
 	for _, module := range expander.ExpandModule(n.Module) {
 		o := &nodeModuleVariable{
 			Addr:           n.Addr.Absolute(module),
@@ -145,7 +146,7 @@ func (n *nodeModuleVariable) ModulePath() addrs.Module {
 }
 
 // GraphNodeExecutable
-func (n *nodeModuleVariable) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *nodeModuleVariable) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	log.Printf("[TRACE] nodeModuleVariable: evaluating %s", n.Addr)
 
 	var val cty.Value
@@ -153,10 +154,10 @@ func (n *nodeModuleVariable) Execute(ctx EvalContext, op walkOperation) (diags t
 
 	switch op {
 	case walkValidate:
-		val, err = n.evalModuleVariable(ctx, true)
+		val, err = n.evalModuleVariable(ectx, true)
 		diags = diags.Append(err)
 	default:
-		val, err = n.evalModuleVariable(ctx, false)
+		val, err = n.evalModuleVariable(ectx, false)
 		diags = diags.Append(err)
 	}
 	if diags.HasErrors() {
@@ -166,9 +167,9 @@ func (n *nodeModuleVariable) Execute(ctx EvalContext, op walkOperation) (diags t
 	// Set values for arguments of a child module call, for later retrieval
 	// during expression evaluation.
 	_, call := n.Addr.Module.CallInstance()
-	ctx.SetModuleCallArgument(call, n.Addr.Variable, val)
+	ectx.SetModuleCallArgument(call, n.Addr.Variable, val)
 
-	return evalVariableValidations(n.Addr, n.Config, n.Expr, ctx)
+	return evalVariableValidations(n.Addr, n.Config, n.Expr, ectx)
 }
 
 // dag.GraphNodeDotter impl.
@@ -194,7 +195,7 @@ func (n *nodeModuleVariable) DotNode(name string, opts *dag.DotOpts) *dag.DotNod
 // validateOnly indicates that this evaluation is only for config
 // validation, and we will not have any expansion module instance
 // repetition data.
-func (n *nodeModuleVariable) evalModuleVariable(ctx EvalContext, validateOnly bool) (cty.Value, error) {
+func (n *nodeModuleVariable) evalModuleVariable(ectx EvalContext, validateOnly bool) (cty.Value, error) {
 	var diags tfdiags.Diagnostics
 	var givenVal cty.Value
 	var errSourceRange tfdiags.SourceRange
@@ -214,10 +215,10 @@ func (n *nodeModuleVariable) evalModuleVariable(ctx EvalContext, validateOnly bo
 		default:
 			// Get the repetition data for this module instance,
 			// so we can create the appropriate scope for evaluating our expression
-			moduleInstanceRepetitionData = ctx.InstanceExpander().GetModuleInstanceRepetitionData(n.ModuleInstance)
+			moduleInstanceRepetitionData = ectx.InstanceExpander().GetModuleInstanceRepetitionData(n.ModuleInstance)
 		}
 
-		scope := ctx.EvaluationScope(nil, nil, moduleInstanceRepetitionData)
+		scope := ectx.EvaluationScope(nil, nil, moduleInstanceRepetitionData)
 		val, moreDiags := scope.EvalExpr(expr, cty.DynamicPseudoType)
 		diags = diags.Append(moreDiags)
 		if moreDiags.HasErrors() {

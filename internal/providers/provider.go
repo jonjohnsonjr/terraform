@@ -4,6 +4,8 @@
 package providers
 
 import (
+	"context"
+
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/hashicorp/terraform/internal/states"
@@ -61,7 +63,7 @@ type Interface interface {
 	// ApplyResourceChange takes the planned state for a resource, which may
 	// yet contain unknown computed values, and applies the changes returning
 	// the final state.
-	ApplyResourceChange(ApplyResourceChangeRequest) ApplyResourceChangeResponse
+	ApplyResourceChange(context.Context, ApplyResourceChangeRequest) ApplyResourceChangeResponse
 
 	// ImportResourceState requests that the given resource be imported.
 	ImportResourceState(ImportResourceStateRequest) ImportResourceStateResponse

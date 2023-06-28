@@ -136,13 +136,13 @@ func (n *NodeDestroyResourceInstance) References() []*addrs.Reference {
 }
 
 // GraphNodeExecutable
-func (n *NodeDestroyResourceInstance) Execute(_ context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
+func (n *NodeDestroyResourceInstance) Execute(ctx context.Context, ectx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
 	// Eval info is different depending on what kind of resource this is
 	switch addr.Resource.Resource.Mode {
 	case addrs.ManagedResourceMode:
-		return n.managedResourceExecute(ectx)
+		return n.managedResourceExecute(ctx, ectx)
 	case addrs.DataResourceMode:
 		return n.dataResourceExecute(ectx)
 	default:
@@ -150,7 +150,7 @@ func (n *NodeDestroyResourceInstance) Execute(_ context.Context, ectx EvalContex
 	}
 }
 
-func (n *NodeDestroyResourceInstance) managedResourceExecute(ectx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodeDestroyResourceInstance) managedResourceExecute(ctx context.Context, ectx EvalContext) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
 	// Get our state
@@ -169,7 +169,7 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ectx EvalContext) (
 		return diags
 	}
 
-	changeApply, err = n.readDiff(ectx, providerSchema)
+	changeApply, err = n.readDiff(ctx, ectx, providerSchema)
 	diags = diags.Append(err)
 	if changeApply == nil || diags.HasErrors() {
 		return diags
@@ -200,7 +200,7 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ectx EvalContext) (
 
 	// Run destroy provisioners if not tainted
 	if state.Status != states.ObjectTainted {
-		applyProvisionersDiags := n.evalApplyProvisioners(ectx, state, false, configs.ProvisionerWhenDestroy)
+		applyProvisionersDiags := n.evalApplyProvisioners(ctx, ectx, state, false, configs.ProvisionerWhenDestroy)
 		diags = diags.Append(applyProvisionersDiags)
 		// keep the diags separate from the main set until we handle the cleanup
 
@@ -215,12 +215,12 @@ func (n *NodeDestroyResourceInstance) managedResourceExecute(ectx EvalContext) (
 	// Managed resources need to be destroyed, while data sources
 	// are only removed from state.
 	// we pass a nil configuration to apply because we are destroying
-	s, d := n.apply(ectx, state, changeApply, nil, instances.RepetitionData{}, false)
+	s, d := n.apply(ctx, ectx, state, changeApply, nil, instances.RepetitionData{}, false)
 	state, diags = s, diags.Append(d)
 	// we don't return immediately here on error, so that the state can be
 	// finalized
 
-	err = n.writeResourceInstanceState(ectx, state, workingState)
+	err = n.writeResourceInstanceState(ctx, ectx, state, workingState)
 	if err != nil {
 		return diags.Append(err)
 	}

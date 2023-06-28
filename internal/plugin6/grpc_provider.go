@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	plugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/terraform/internal/logging"
@@ -19,6 +21,7 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"github.com/zclconf/go-cty/cty/msgpack"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 var logger = logging.HCLogger()
@@ -484,7 +487,33 @@ func (p *GRPCProvider) PlanResourceChange(r providers.PlanResourceChangeRequest)
 	return resp
 }
 
-func (p *GRPCProvider) ApplyResourceChange(r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+func (s *metadataSupplier) Get(key string) string {
+	values := s.metadata.Get(key)
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func (s *metadataSupplier) Set(key string, value string) {
+	s.metadata.Set(key, value)
+}
+
+func (s *metadataSupplier) Keys() []string {
+	out := make([]string, 0, len(*s.metadata))
+	for key := range *s.metadata {
+		out = append(out, key)
+	}
+	return out
+}
+
+func (p *GRPCProvider) ApplyResourceChange(ctx context.Context, r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ApplyResourceChange")
+	defer span.End()
+
+	// TODO: Is this at all right?
+	ctx = inject(ctx)
+
 	logger.Trace("GRPCProvider.v6: ApplyResourceChange")
 
 	schema := p.getSchema()
@@ -534,7 +563,7 @@ func (p *GRPCProvider) ApplyResourceChange(r providers.ApplyResourceChangeReques
 		protoReq.ProviderMeta = &proto6.DynamicValue{Msgpack: metaMP}
 	}
 
-	protoResp, err := p.client.ApplyResourceChange(p.ctx, protoReq)
+	protoResp, err := p.client.ApplyResourceChange(ctx, protoReq)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(grpcErr(err))
 		return resp
@@ -693,4 +722,21 @@ func decodeDynamicValue(v *proto6.DynamicValue, ty cty.Type) (cty.Value, error) 
 		res, err = ctyjson.Unmarshal(v.Json, ty)
 	}
 	return res, err
+}
+
+type metadataSupplier struct {
+	metadata *metadata.MD
+}
+
+var _ propagation.TextMapCarrier = &metadataSupplier{}
+
+func inject(ctx context.Context) context.Context {
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
+	}
+	otel.GetTextMapPropagator().Inject(ctx, &metadataSupplier{
+		metadata: &md,
+	})
+	return metadata.NewOutgoingContext(ctx, md)
 }

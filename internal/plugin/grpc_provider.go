@@ -515,8 +515,8 @@ func (p *GRPCProvider) PlanResourceChange(r providers.PlanResourceChangeRequest)
 	return resp
 }
 
-func (p *GRPCProvider) ApplyResourceChange(r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
-	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(p.ctx, "ApplyResourceChange")
+func (p *GRPCProvider) ApplyResourceChange(ctx context.Context, r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ApplyResourceChange")
 	defer span.End()
 
 	logger.Trace("GRPCProvider: ApplyResourceChange")

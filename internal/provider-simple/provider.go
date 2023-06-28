@@ -5,6 +5,7 @@
 package simple
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -108,7 +109,7 @@ func (s simple) PlanResourceChange(req providers.PlanResourceChangeRequest) (res
 	return resp
 }
 
-func (s simple) ApplyResourceChange(req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+func (s simple) ApplyResourceChange(_ context.Context, req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
 	if req.PlannedState.IsNull() {
 		resp.NewState = req.PlannedState
 		return resp

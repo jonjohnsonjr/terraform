@@ -12,6 +12,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"github.com/zclconf/go-cty/cty/msgpack"
+	"go.opentelemetry.io/otel"
 )
 
 // New wraps a providers.Interface to implement a grpc ProviderServer.
@@ -155,7 +156,10 @@ func (p *provider) UpgradeResourceState(_ context.Context, req *tfplugin5.Upgrad
 	return resp, nil
 }
 
-func (p *provider) Configure(_ context.Context, req *tfplugin5.Configure_Request) (*tfplugin5.Configure_Response, error) {
+func (p *provider) Configure(ctx context.Context, req *tfplugin5.Configure_Request) (*tfplugin5.Configure_Response, error) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "Configure")
+	defer span.End()
+
 	resp := &tfplugin5.Configure_Response{}
 	ty := p.schema.Provider.Block.ImpliedType()
 
@@ -174,7 +178,10 @@ func (p *provider) Configure(_ context.Context, req *tfplugin5.Configure_Request
 	return resp, nil
 }
 
-func (p *provider) ReadResource(_ context.Context, req *tfplugin5.ReadResource_Request) (*tfplugin5.ReadResource_Response, error) {
+func (p *provider) ReadResource(ctx context.Context, req *tfplugin5.ReadResource_Request) (*tfplugin5.ReadResource_Response, error) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ReadResource")
+	defer span.End()
+
 	resp := &tfplugin5.ReadResource_Response{}
 	ty := p.schema.ResourceTypes[req.TypeName].Block.ImpliedType()
 
@@ -270,7 +277,10 @@ func (p *provider) PlanResourceChange(_ context.Context, req *tfplugin5.PlanReso
 	return resp, nil
 }
 
-func (p *provider) ApplyResourceChange(_ context.Context, req *tfplugin5.ApplyResourceChange_Request) (*tfplugin5.ApplyResourceChange_Response, error) {
+func (p *provider) ApplyResourceChange(ctx context.Context, req *tfplugin5.ApplyResourceChange_Request) (*tfplugin5.ApplyResourceChange_Response, error) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ApplyResourceChange")
+	defer span.End()
+
 	resp := &tfplugin5.ApplyResourceChange_Response{}
 	ty := p.schema.ResourceTypes[req.TypeName].Block.ImpliedType()
 
@@ -299,7 +309,7 @@ func (p *provider) ApplyResourceChange(_ context.Context, req *tfplugin5.ApplyRe
 		return resp, nil
 	}
 
-	applyResp := p.provider.ApplyResourceChange(providers.ApplyResourceChangeRequest{
+	applyResp := p.provider.ApplyResourceChange(ctx, providers.ApplyResourceChangeRequest{
 		TypeName:       req.TypeName,
 		PriorState:     priorStateVal,
 		PlannedState:   plannedStateVal,
@@ -350,7 +360,10 @@ func (p *provider) ImportResourceState(_ context.Context, req *tfplugin5.ImportR
 	return resp, nil
 }
 
-func (p *provider) ReadDataSource(_ context.Context, req *tfplugin5.ReadDataSource_Request) (*tfplugin5.ReadDataSource_Response, error) {
+func (p *provider) ReadDataSource(ctx context.Context, req *tfplugin5.ReadDataSource_Request) (*tfplugin5.ReadDataSource_Response, error) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "ReadDataSource")
+	defer span.End()
+
 	resp := &tfplugin5.ReadDataSource_Response{}
 	ty := p.schema.DataSources[req.TypeName].Block.ImpliedType()
 

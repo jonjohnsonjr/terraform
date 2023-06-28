@@ -5,6 +5,7 @@
 package simple
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -112,7 +113,7 @@ func (s simple) PlanResourceChange(req providers.PlanResourceChangeRequest) (res
 	return resp
 }
 
-func (s simple) ApplyResourceChange(req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+func (s simple) ApplyResourceChange(_ context.Context, req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
 	if req.PlannedState.IsNull() {
 		// make sure this was transferred from the plan action
 		if string(req.PlannedPrivate) != "destroy planned" {

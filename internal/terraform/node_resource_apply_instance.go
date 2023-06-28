@@ -166,7 +166,7 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx context.Context,
 		return diags
 	}
 
-	change, err := n.readDiff(ectx, providerSchema)
+	change, err := n.readDiff(ctx, ectx, providerSchema)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
@@ -182,7 +182,7 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx context.Context,
 	// In this particular call to applyDataSource we include our planned
 	// change, which signals that we expect this read to complete fully
 	// with no unknown values; it'll produce an error if not.
-	state, repeatData, applyDiags := n.applyDataSource(ectx, change)
+	state, repeatData, applyDiags := n.applyDataSource(ctx, ectx, change)
 	diags = diags.Append(applyDiags)
 	if diags.HasErrors() {
 		return diags
@@ -194,7 +194,7 @@ func (n *NodeApplyableResourceInstance) dataResourceExecute(ctx context.Context,
 		// actually reading the data (e.g. because it was already read during
 		// the plan phase) and so we're only running through here to get the
 		// extra details like precondition/postcondition checks.
-		diags = diags.Append(n.writeResourceInstanceState(ectx, state, workingState))
+		diags = diags.Append(n.writeResourceInstanceState(ctx, ectx, state, workingState))
 		if diags.HasErrors() {
 			return diags
 		}
@@ -238,7 +238,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx context.Conte
 	}
 
 	// Get the saved diff for apply
-	diffApply, err := n.readDiff(ectx, providerSchema)
+	diffApply, err := n.readDiff(ctx, ectx, providerSchema)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
@@ -279,7 +279,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx context.Conte
 	}
 
 	// Get the saved diff
-	diff, err := n.readDiff(ectx, providerSchema)
+	diff, err := n.readDiff(ctx, ectx, providerSchema)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return diags
@@ -287,14 +287,14 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx context.Conte
 
 	// Make a new diff, in case we've learned new values in the state
 	// during apply which we can now incorporate.
-	diffApply, _, repeatData, planDiags := n.plan(ectx, diff, state, false, n.forceReplace)
+	diffApply, _, repeatData, planDiags := n.plan(ctx, ectx, diff, state, false, n.forceReplace)
 	diags = diags.Append(planDiags)
 	if diags.HasErrors() {
 		return diags
 	}
 
 	// Compare the diffs
-	diags = diags.Append(n.checkPlannedChange(ectx, diff, diffApply, providerSchema))
+	diags = diags.Append(n.checkPlannedChange(ctx, ectx, diff, diffApply, providerSchema))
 	if diags.HasErrors() {
 		return diags
 	}
@@ -318,7 +318,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx context.Conte
 		return diags.Append(n.managedResourcePostconditions(ectx, repeatData))
 	}
 
-	state, applyDiags := n.apply(ectx, state, diffApply, n.Config, repeatData, n.CreateBeforeDestroy())
+	state, applyDiags := n.apply(ctx, ectx, state, diffApply, n.Config, repeatData, n.CreateBeforeDestroy())
 	diags = diags.Append(applyDiags)
 
 	// We clear the change out here so that future nodes don't see a change
@@ -334,20 +334,20 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx context.Conte
 		// dependencies are always updated to match the configuration during apply
 		state.Dependencies = n.Dependencies
 	}
-	err = n.writeResourceInstanceState(ectx, state, workingState)
+	err = n.writeResourceInstanceState(ctx, ectx, state, workingState)
 	if err != nil {
 		return diags.Append(err)
 	}
 
 	// Run Provisioners
 	createNew := (diffApply.Action == plans.Create || diffApply.Action.IsReplace())
-	applyProvisionersDiags := n.evalApplyProvisioners(ectx, state, createNew, configs.ProvisionerWhenCreate)
+	applyProvisionersDiags := n.evalApplyProvisioners(ctx, ectx, state, createNew, configs.ProvisionerWhenCreate)
 	// the provisioner errors count as port of the apply error, so we can bundle the diags
 	diags = diags.Append(applyProvisionersDiags)
 
 	state = maybeTainted(addr.Absolute(ectx.Path()), state, diffApply, diags.Err())
 
-	err = n.writeResourceInstanceState(ectx, state, workingState)
+	err = n.writeResourceInstanceState(ctx, ectx, state, workingState)
 	if err != nil {
 		return diags.Append(err)
 	}
@@ -413,7 +413,10 @@ func (n *NodeApplyableResourceInstance) managedResourcePostconditions(ectx EvalC
 // Errors here are most often indicative of a bug in the provider, so our error
 // messages will report with that in mind. It's also possible that there's a bug
 // in Terraform's Core's own "proposed new value" code in EvalDiff.
-func (n *NodeApplyableResourceInstance) checkPlannedChange(ectx EvalContext, plannedChange, actualChange *plans.ResourceInstanceChange, providerSchema *ProviderSchema) tfdiags.Diagnostics {
+func (n *NodeApplyableResourceInstance) checkPlannedChange(ctx context.Context, ectx EvalContext, plannedChange, actualChange *plans.ResourceInstanceChange, providerSchema *ProviderSchema) tfdiags.Diagnostics {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.checkPlannedChange", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 	addr := n.ResourceInstanceAddr().Resource
 

@@ -4,12 +4,16 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/checks"
@@ -137,8 +141,11 @@ func (n *NodeAbstractResourceInstance) AttachResourceState(s *states.Resource) {
 
 // readDiff returns the planned change for a particular resource instance
 // object.
-func (n *NodeAbstractResourceInstance) readDiff(ctx EvalContext, providerSchema *ProviderSchema) (*plans.ResourceInstanceChange, error) {
-	changes := ctx.Changes()
+func (n *NodeAbstractResourceInstance) readDiff(ctx context.Context, ectx EvalContext, providerSchema *ProviderSchema) (*plans.ResourceInstanceChange, error) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.readDiff", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
+	changes := ectx.Changes()
 	addr := n.ResourceInstanceAddr()
 
 	schema, _ := providerSchema.SchemaForResourceAddr(addr.Resource.Resource)
@@ -189,7 +196,7 @@ func (n *NodeAbstractResourceInstance) checkPreventDestroy(change *plans.Resourc
 }
 
 // preApplyHook calls the pre-Apply hook
-func (n *NodeAbstractResourceInstance) preApplyHook(ctx EvalContext, change *plans.ResourceInstanceChange) tfdiags.Diagnostics {
+func (n *NodeAbstractResourceInstance) preApplyHook(ectx EvalContext, change *plans.ResourceInstanceChange) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
 	if change == nil {
@@ -201,7 +208,7 @@ func (n *NodeAbstractResourceInstance) preApplyHook(ctx EvalContext, change *pla
 		priorState := change.Before
 		plannedNewState := change.After
 
-		diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+		diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 			return h.PreApply(n.Addr, change.DeposedKey.Generation(), change.Action, priorState, plannedNewState)
 		}))
 		if diags.HasErrors() {
@@ -213,7 +220,7 @@ func (n *NodeAbstractResourceInstance) preApplyHook(ctx EvalContext, change *pla
 }
 
 // postApplyHook calls the post-Apply hook
-func (n *NodeAbstractResourceInstance) postApplyHook(ctx EvalContext, state *states.ResourceInstanceObject, err error) tfdiags.Diagnostics {
+func (n *NodeAbstractResourceInstance) postApplyHook(ectx EvalContext, state *states.ResourceInstanceObject, err error) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
 	// Only managed resources have user-visible apply actions.
@@ -224,7 +231,7 @@ func (n *NodeAbstractResourceInstance) postApplyHook(ctx EvalContext, state *sta
 		} else {
 			newState = cty.NullVal(cty.DynamicPseudoType)
 		}
-		diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+		diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 			return h.PostApply(n.Addr, nil, newState, err)
 		}))
 	}
@@ -251,26 +258,29 @@ const (
 //
 // targetState determines which context state we're writing to during plan. The
 // default is the global working state.
-func (n *NodeAbstractResourceInstance) writeResourceInstanceState(ctx EvalContext, obj *states.ResourceInstanceObject, targetState phaseState) error {
-	return n.writeResourceInstanceStateImpl(ctx, states.NotDeposed, obj, targetState)
+func (n *NodeAbstractResourceInstance) writeResourceInstanceState(ctx context.Context, ectx EvalContext, obj *states.ResourceInstanceObject, targetState phaseState) error {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.writeResourceInstanceState", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
+	return n.writeResourceInstanceStateImpl(ectx, states.NotDeposed, obj, targetState)
 }
 
-func (n *NodeAbstractResourceInstance) writeResourceInstanceStateDeposed(ctx EvalContext, deposedKey states.DeposedKey, obj *states.ResourceInstanceObject, targetState phaseState) error {
+func (n *NodeAbstractResourceInstance) writeResourceInstanceStateDeposed(ectx EvalContext, deposedKey states.DeposedKey, obj *states.ResourceInstanceObject, targetState phaseState) error {
 	if deposedKey == states.NotDeposed {
 		// Bail out to avoid silently doing something other than what the
 		// caller seems to have intended.
 		panic("trying to write current state object using writeResourceInstanceStateDeposed")
 	}
-	return n.writeResourceInstanceStateImpl(ctx, deposedKey, obj, targetState)
+	return n.writeResourceInstanceStateImpl(ectx, deposedKey, obj, targetState)
 }
 
 // (this is the private common body of both writeResourceInstanceState and
 // writeResourceInstanceStateDeposed. Don't call it directly; instead, use
 // one of the two wrappers to be explicit about which of the instance's
 // objects you are intending to write.
-func (n *NodeAbstractResourceInstance) writeResourceInstanceStateImpl(ctx EvalContext, deposedKey states.DeposedKey, obj *states.ResourceInstanceObject, targetState phaseState) error {
+func (n *NodeAbstractResourceInstance) writeResourceInstanceStateImpl(ectx EvalContext, deposedKey states.DeposedKey, obj *states.ResourceInstanceObject, targetState phaseState) error {
 	absAddr := n.Addr
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return err
 	}
@@ -285,11 +295,11 @@ func (n *NodeAbstractResourceInstance) writeResourceInstanceStateImpl(ctx EvalCo
 	var state *states.SyncState
 	switch targetState {
 	case workingState:
-		state = ctx.State()
+		state = ectx.State()
 	case refreshState:
-		state = ctx.RefreshState()
+		state = ectx.RefreshState()
 	case prevRunState:
-		state = ctx.PrevRunState()
+		state = ectx.PrevRunState()
 	default:
 		panic(fmt.Sprintf("unsupported phaseState value %#v", targetState))
 	}
@@ -352,7 +362,7 @@ func (n *NodeAbstractResourceInstance) writeResourceInstanceStateImpl(ctx EvalCo
 }
 
 // planDestroy returns a plain destroy diff.
-func (n *NodeAbstractResourceInstance) planDestroy(ctx EvalContext, currentState *states.ResourceInstanceObject, deposedKey states.DeposedKey) (*plans.ResourceInstanceChange, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) planDestroy(ctx context.Context, ectx EvalContext, currentState *states.ResourceInstanceObject, deposedKey states.DeposedKey) (*plans.ResourceInstanceChange, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	var plan *plans.ResourceInstanceChange
 
@@ -375,7 +385,7 @@ func (n *NodeAbstractResourceInstance) planDestroy(ctx EvalContext, currentState
 		// vs. that something being entirely excluded e.g. due to -target.
 		noop := &plans.ResourceInstanceChange{
 			Addr:        absAddr,
-			PrevRunAddr: n.prevRunAddr(ctx),
+			PrevRunAddr: n.prevRunAddr(ectx),
 			DeposedKey:  deposedKey,
 			Change: plans.Change{
 				Action: plans.NoOp,
@@ -393,12 +403,12 @@ func (n *NodeAbstractResourceInstance) planDestroy(ctx EvalContext, currentState
 	// operation.
 	nullVal := cty.NullVal(unmarkedPriorVal.Type())
 
-	provider, _, err := getProvider(ctx, n.ResolvedProvider)
+	provider, _, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return plan, diags.Append(err)
 	}
 
-	metaConfigVal, metaDiags := n.providerMetas(ctx)
+	metaConfigVal, metaDiags := n.providerMetas(ctx, ectx)
 	diags = diags.Append(metaDiags)
 	if diags.HasErrors() {
 		return plan, diags
@@ -442,7 +452,7 @@ func (n *NodeAbstractResourceInstance) planDestroy(ctx EvalContext, currentState
 	// Plan is always the same for a destroy.
 	plan = &plans.ResourceInstanceChange{
 		Addr:        absAddr,
-		PrevRunAddr: n.prevRunAddr(ctx),
+		PrevRunAddr: n.prevRunAddr(ectx),
 		DeposedKey:  deposedKey,
 		Change: plans.Change{
 			Action: plans.Delete,
@@ -458,8 +468,8 @@ func (n *NodeAbstractResourceInstance) planDestroy(ctx EvalContext, currentState
 
 // writeChange saves a planned change for an instance object into the set of
 // global planned changes.
-func (n *NodeAbstractResourceInstance) writeChange(ctx EvalContext, change *plans.ResourceInstanceChange, deposedKey states.DeposedKey) error {
-	changes := ctx.Changes()
+func (n *NodeAbstractResourceInstance) writeChange(ectx EvalContext, change *plans.ResourceInstanceChange, deposedKey states.DeposedKey) error {
+	changes := ectx.Changes()
 
 	if change == nil {
 		// Caller sets nil to indicate that we need to remove a change from
@@ -472,7 +482,7 @@ func (n *NodeAbstractResourceInstance) writeChange(ctx EvalContext, change *plan
 		return nil
 	}
 
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return err
 	}
@@ -515,7 +525,10 @@ func (n *NodeAbstractResourceInstance) writeChange(ctx EvalContext, change *plan
 }
 
 // refresh does a refresh for a resource
-func (n *NodeAbstractResourceInstance) refresh(ctx EvalContext, deposedKey states.DeposedKey, state *states.ResourceInstanceObject) (*states.ResourceInstanceObject, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) refresh(ctx context.Context, ectx EvalContext, deposedKey states.DeposedKey, state *states.ResourceInstanceObject) (*states.ResourceInstanceObject, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.refresh", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 	absAddr := n.Addr
 	if deposedKey == states.NotDeposed {
@@ -523,7 +536,7 @@ func (n *NodeAbstractResourceInstance) refresh(ctx EvalContext, deposedKey state
 	} else {
 		log.Printf("[TRACE] NodeAbstractResourceInstance.refresh for %s (deposed object %s)", absAddr, deposedKey)
 	}
-	provider, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	provider, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return state, diags.Append(err)
 	}
@@ -540,7 +553,7 @@ func (n *NodeAbstractResourceInstance) refresh(ctx EvalContext, deposedKey state
 		return state, diags
 	}
 
-	metaConfigVal, metaDiags := n.providerMetas(ctx)
+	metaConfigVal, metaDiags := n.providerMetas(ctx, ectx)
 	diags = diags.Append(metaDiags)
 	if diags.HasErrors() {
 		return state, diags
@@ -552,7 +565,7 @@ func (n *NodeAbstractResourceInstance) refresh(ctx EvalContext, deposedKey state
 	}
 
 	// Call pre-refresh hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PreRefresh(absAddr, hookGen, state.Value)
 	}))
 	if diags.HasErrors() {
@@ -632,7 +645,7 @@ func (n *NodeAbstractResourceInstance) refresh(ctx EvalContext, deposedKey state
 	}
 
 	// Call post-refresh hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PostRefresh(absAddr, hookGen, priorVal, ret.Value)
 	}))
 	if diags.HasErrors() {
@@ -648,17 +661,21 @@ func (n *NodeAbstractResourceInstance) refresh(ctx EvalContext, deposedKey state
 }
 
 func (n *NodeAbstractResourceInstance) plan(
-	ctx EvalContext,
+	ctx context.Context,
+	ectx EvalContext,
 	plannedChange *plans.ResourceInstanceChange,
 	currentState *states.ResourceInstanceObject,
 	createBeforeDestroy bool,
 	forceReplace []addrs.AbsResourceInstance,
 ) (*plans.ResourceInstanceChange, *states.ResourceInstanceObject, instances.RepetitionData, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.plan", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 	var keyData instances.RepetitionData
 
 	resource := n.Addr.Resource.Resource
-	provider, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	provider, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return nil, nil, keyData, diags.Append(err)
 	}
@@ -701,14 +718,14 @@ func (n *NodeAbstractResourceInstance) plan(
 	}
 
 	// Evaluate the configuration
-	forEach, _ := evaluateForEachExpression(n.Config.ForEach, ctx)
+	forEach, _ := evaluateForEachExpression(n.Config.ForEach, ectx)
 
 	keyData = EvalDataForInstanceKey(n.ResourceInstanceAddr().Resource.Key, forEach)
 
 	checkDiags := evalCheckRules(
 		addrs.ResourcePrecondition,
 		n.Config.Preconditions,
-		ctx, n.Addr, keyData,
+		ectx, n.Addr, keyData,
 		checkRuleSeverity,
 	)
 	diags = diags.Append(checkDiags)
@@ -723,13 +740,15 @@ func (n *NodeAbstractResourceInstance) plan(
 		return plannedChange, currentState.DeepCopy(), keyData, diags
 	}
 
-	origConfigVal, _, configDiags := ctx.EvaluateBlock(config.Config, schema, nil, keyData)
+	_, span2 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.ectx.EvaluteBlock", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	origConfigVal, _, configDiags := ectx.EvaluateBlock(config.Config, schema, nil, keyData)
+	span2.End()
 	diags = diags.Append(configDiags)
 	if configDiags.HasErrors() {
 		return nil, nil, keyData, diags
 	}
 
-	metaConfigVal, metaDiags := n.providerMetas(ctx)
+	metaConfigVal, metaDiags := n.providerMetas(ctx, ectx)
 	diags = diags.Append(metaDiags)
 	if diags.HasErrors() {
 		return nil, nil, keyData, diags
@@ -800,7 +819,7 @@ func (n *NodeAbstractResourceInstance) plan(
 	proposedNewVal := objchange.ProposedNew(schema, unmarkedPriorVal, unmarkedConfigVal)
 
 	// Call pre-diff hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PreDiff(n.Addr, states.CurrentGen, priorVal, proposedNewVal)
 	}))
 	if diags.HasErrors() {
@@ -1122,7 +1141,7 @@ func (n *NodeAbstractResourceInstance) plan(
 	}
 
 	// Call post-refresh hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PostDiff(n.Addr, states.CurrentGen, action, priorVal, plannedNewVal)
 	}))
 	if diags.HasErrors() {
@@ -1132,7 +1151,7 @@ func (n *NodeAbstractResourceInstance) plan(
 	// Update our return plan
 	plan := &plans.ResourceInstanceChange{
 		Addr:         n.Addr,
-		PrevRunAddr:  n.prevRunAddr(ctx),
+		PrevRunAddr:  n.prevRunAddr(ectx),
 		Private:      plannedPrivate,
 		ProviderAddr: n.ResolvedProvider,
 		Change: plans.Change{
@@ -1405,13 +1424,16 @@ func processIgnoreChangesIndividual(prior, config cty.Value, ignoreChangesPath [
 // readDataSource handles everything needed to call ReadDataSource on the provider.
 // A previously evaluated configVal can be passed in, or a new one is generated
 // from the resource configuration.
-func (n *NodeAbstractResourceInstance) readDataSource(ctx EvalContext, configVal cty.Value) (cty.Value, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) readDataSource(ctx context.Context, ectx EvalContext, configVal cty.Value) (cty.Value, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.readDataSource", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 	var newVal cty.Value
 
 	config := *n.Config
 
-	provider, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	provider, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {
 		return newVal, diags
@@ -1427,7 +1449,7 @@ func (n *NodeAbstractResourceInstance) readDataSource(ctx EvalContext, configVal
 		return newVal, diags
 	}
 
-	metaConfigVal, metaDiags := n.providerMetas(ctx)
+	metaConfigVal, metaDiags := n.providerMetas(ctx, ectx)
 	diags = diags.Append(metaDiags)
 	if diags.HasErrors() {
 		return newVal, diags
@@ -1453,7 +1475,7 @@ func (n *NodeAbstractResourceInstance) readDataSource(ctx EvalContext, configVal
 	// to actually call the provider to read the data.
 	log.Printf("[TRACE] readDataSource: %s configuration is complete, so reading from provider", n.Addr)
 
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PreApply(n.Addr, states.CurrentGen, plans.Read, cty.NullVal(configVal.Type()), configVal)
 	}))
 	if diags.HasErrors() {
@@ -1524,18 +1546,18 @@ func (n *NodeAbstractResourceInstance) readDataSource(ctx EvalContext, configVal
 		newVal = newVal.MarkWithPaths(pvm)
 	}
 
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PostApply(n.Addr, states.CurrentGen, newVal, diags.Err())
 	}))
 
 	return newVal, diags
 }
 
-func (n *NodeAbstractResourceInstance) providerMetas(ctx EvalContext) (cty.Value, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) providerMetas(ctx context.Context, ectx EvalContext) (cty.Value, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	metaConfigVal := cty.NullVal(cty.DynamicPseudoType)
 
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return metaConfigVal, diags.Append(err)
 	}
@@ -1554,7 +1576,9 @@ func (n *NodeAbstractResourceInstance) providerMetas(ctx EvalContext) (cty.Value
 				})
 			} else {
 				var configDiags tfdiags.Diagnostics
-				metaConfigVal, _, configDiags = ctx.EvaluateBlock(m.Config, providerSchema.ProviderMeta, nil, EvalDataForNoInstanceKey)
+				_, span2 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.ectx.EvaluteBlock", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+				metaConfigVal, _, configDiags = ectx.EvaluateBlock(m.Config, providerSchema.ProviderMeta, nil, EvalDataForNoInstanceKey)
+				span2.End()
 				diags = diags.Append(configDiags)
 			}
 		}
@@ -1571,12 +1595,15 @@ func (n *NodeAbstractResourceInstance) providerMetas(ctx EvalContext) (cty.Value
 // value, but it still matches the previous state, then we can record a NoNop
 // change. If the states don't match then we record a Read change so that the
 // new value is applied to the state.
-func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRuleSeverity tfdiags.Severity, skipPlanChanges bool) (*plans.ResourceInstanceChange, *states.ResourceInstanceObject, instances.RepetitionData, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) planDataSource(ctx context.Context, ectx EvalContext, checkRuleSeverity tfdiags.Severity, skipPlanChanges bool) (*plans.ResourceInstanceChange, *states.ResourceInstanceObject, instances.RepetitionData, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.planDataSource", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 	var keyData instances.RepetitionData
 	var configVal cty.Value
 
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return nil, nil, keyData, diags.Append(err)
 	}
@@ -1595,13 +1622,13 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 	objTy := schema.ImpliedType()
 	priorVal := cty.NullVal(objTy)
 
-	forEach, _ := evaluateForEachExpression(config.ForEach, ctx)
+	forEach, _ := evaluateForEachExpression(config.ForEach, ectx)
 	keyData = EvalDataForInstanceKey(n.ResourceInstanceAddr().Resource.Key, forEach)
 
 	checkDiags := evalCheckRules(
 		addrs.ResourcePrecondition,
 		n.Config.Preconditions,
-		ctx, n.Addr, keyData,
+		ectx, n.Addr, keyData,
 		checkRuleSeverity,
 	)
 	diags = diags.Append(checkDiags)
@@ -1610,7 +1637,9 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 	}
 
 	var configDiags tfdiags.Diagnostics
-	configVal, _, configDiags = ctx.EvaluateBlock(config.Config, schema, nil, keyData)
+	_, span2 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.ectx.EvaluteBlock", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	configVal, _, configDiags = ectx.EvaluateBlock(config.Config, schema, nil, keyData)
+	span2.End()
 	diags = diags.Append(configDiags)
 	if configDiags.HasErrors() {
 		return nil, nil, keyData, diags
@@ -1635,15 +1664,15 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 		// to be StatusPass. The rest of this function will only update the
 		// status if it should be StatusFail.
 		defer func() {
-			status := ctx.Checks().ObjectCheckStatus(check.Addr().Absolute(n.Addr.Module))
+			status := ectx.Checks().ObjectCheckStatus(check.Addr().Absolute(n.Addr.Module))
 			if status == checks.StatusUnknown {
-				ctx.Checks().ReportCheckResult(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, checks.StatusPass)
+				ectx.Checks().ReportCheckResult(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, checks.StatusPass)
 			}
 		}()
 	}
 
 	configKnown := configVal.IsWhollyKnown()
-	depsPending := n.dependenciesHavePendingChanges(ctx)
+	depsPending := n.dependenciesHavePendingChanges(ectx)
 	// If our configuration contains any unknown values, or we depend on any
 	// unknown values then we must defer the read to the apply phase by
 	// producing a "Read" change for this resource, and a placeholder value for
@@ -1681,7 +1710,7 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 		// value containing unknowns from PlanDataResourceObject.
 		plannedChange := &plans.ResourceInstanceChange{
 			Addr:         n.Addr,
-			PrevRunAddr:  n.prevRunAddr(ctx),
+			PrevRunAddr:  n.prevRunAddr(ectx),
 			ProviderAddr: n.ResolvedProvider,
 			Change: plans.Change{
 				Action: plans.Read,
@@ -1696,7 +1725,7 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 			Status: states.ObjectPlanned,
 		}
 
-		diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+		diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 			return h.PostDiff(n.Addr, states.CurrentGen, plans.Read, priorVal, proposedNewVal)
 		}))
 
@@ -1705,7 +1734,7 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 
 	// We have a complete configuration with no dependencies to wait on, so we
 	// can read the data source into the state.
-	newVal, readDiags := n.readDataSource(ctx, configVal)
+	newVal, readDiags := n.readDataSource(ctx, ectx, configVal)
 
 	// Now we've loaded the data, and diags tells us whether we were successful
 	// or not, we are going to create our plannedChange and our
@@ -1738,7 +1767,7 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 
 			// We still want to report the check as failed even if we are still
 			// letting it run again during the apply stage.
-			ctx.Checks().ReportCheckFailure(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, readDiags.Err().Error())
+			ectx.Checks().ReportCheckFailure(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, readDiags.Err().Error())
 		}
 
 		// Any warning or error diagnostics we'll wrap with some special checks
@@ -1751,7 +1780,7 @@ func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, checkRule
 			// this if skipPlanChanges is false.
 			plannedChange = &plans.ResourceInstanceChange{
 				Addr:         n.Addr,
-				PrevRunAddr:  n.prevRunAddr(ctx),
+				PrevRunAddr:  n.prevRunAddr(ectx),
 				ProviderAddr: n.ResolvedProvider,
 				Change: plans.Change{
 					Action: plans.Read,
@@ -1790,14 +1819,14 @@ func (n *NodeAbstractResourceInstance) nestedInCheckBlock() (*configs.Check, boo
 // receiver depends on has a change pending in the plan, in which case we'd
 // need to override the usual behavior of immediately reading from the data
 // source where possible, and instead defer the read until the apply step.
-func (n *NodeAbstractResourceInstance) dependenciesHavePendingChanges(ctx EvalContext) bool {
+func (n *NodeAbstractResourceInstance) dependenciesHavePendingChanges(ectx EvalContext) bool {
 	nModInst := n.Addr.Module
 	nMod := nModInst.Module()
 
 	// Check and see if any depends_on dependencies have
 	// changes, since they won't show up as changes in the
 	// configuration.
-	changes := ctx.Changes()
+	changes := ectx.Changes()
 
 	depsToUse := n.dependsOn
 
@@ -1843,11 +1872,14 @@ func (n *NodeAbstractResourceInstance) dependenciesHavePendingChanges(ctx EvalCo
 
 // apply deals with the main part of the data resource lifecycle: either
 // actually reading from the data source or generating a plan to do so.
-func (n *NodeAbstractResourceInstance) applyDataSource(ctx EvalContext, planned *plans.ResourceInstanceChange) (*states.ResourceInstanceObject, instances.RepetitionData, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) applyDataSource(ctx context.Context, ectx EvalContext, planned *plans.ResourceInstanceChange) (*states.ResourceInstanceObject, instances.RepetitionData, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.applyDataSource", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
+
 	var diags tfdiags.Diagnostics
 	var keyData instances.RepetitionData
 
-	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
 	if err != nil {
 		return nil, keyData, diags.Append(err)
 	}
@@ -1873,18 +1905,18 @@ func (n *NodeAbstractResourceInstance) applyDataSource(ctx EvalContext, planned 
 		return nil, keyData, diags
 	}
 
-	forEach, _ := evaluateForEachExpression(config.ForEach, ctx)
+	forEach, _ := evaluateForEachExpression(config.ForEach, ectx)
 	keyData = EvalDataForInstanceKey(n.Addr.Resource.Key, forEach)
 
 	checkDiags := evalCheckRules(
 		addrs.ResourcePrecondition,
 		n.Config.Preconditions,
-		ctx, n.Addr, keyData,
+		ectx, n.Addr, keyData,
 		tfdiags.Error,
 	)
 	diags = diags.Append(checkDiags)
 	if diags.HasErrors() {
-		diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+		diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 			return h.PostApply(n.Addr, states.CurrentGen, planned.Before, diags.Err())
 		}))
 		return nil, keyData, diags // failed preconditions prevent further evaluation
@@ -1897,18 +1929,20 @@ func (n *NodeAbstractResourceInstance) applyDataSource(ctx EvalContext, planned 
 		return nil, keyData, diags
 	}
 
-	configVal, _, configDiags := ctx.EvaluateBlock(config.Config, schema, nil, keyData)
+	_, span2 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.ectx.EvaluteBlock", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	configVal, _, configDiags := ectx.EvaluateBlock(config.Config, schema, nil, keyData)
+	span2.End()
 	diags = diags.Append(configDiags)
 	if configDiags.HasErrors() {
 		return nil, keyData, diags
 	}
 
-	newVal, readDiags := n.readDataSource(ctx, configVal)
+	newVal, readDiags := n.readDataSource(ctx, ectx, configVal)
 	if check, nested := n.nestedInCheckBlock(); nested {
 		// We're just going to jump in here and hide away any errors for nested
 		// data blocks.
 		if readDiags.HasErrors() {
-			ctx.Checks().ReportCheckFailure(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, readDiags.Err().Error())
+			ectx.Checks().ReportCheckFailure(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, readDiags.Err().Error())
 			diags = diags.Append(tfdiags.AsCheckBlockDiagnostics(readDiags))
 			return nil, keyData, diags
 		}
@@ -1919,7 +1953,7 @@ func (n *NodeAbstractResourceInstance) applyDataSource(ctx EvalContext, planned 
 
 		// If no errors, just remember to report this as a success and continue
 		// as normal.
-		ctx.Checks().ReportCheckResult(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, checks.StatusPass)
+		ectx.Checks().ReportCheckResult(check.Addr().Absolute(n.Addr.Module), addrs.CheckDataResource, 0, checks.StatusPass)
 	}
 
 	diags = diags.Append(readDiags)
@@ -1938,7 +1972,7 @@ func (n *NodeAbstractResourceInstance) applyDataSource(ctx EvalContext, planned 
 // evalApplyProvisioners determines if provisioners need to be run, and if so
 // executes the provisioners for a resource and returns an updated error if
 // provisioning fails.
-func (n *NodeAbstractResourceInstance) evalApplyProvisioners(ctx EvalContext, state *states.ResourceInstanceObject, createNew bool, when configs.ProvisionerWhen) tfdiags.Diagnostics {
+func (n *NodeAbstractResourceInstance) evalApplyProvisioners(ctx context.Context, ectx EvalContext, state *states.ResourceInstanceObject, createNew bool, when configs.ProvisionerWhen) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
 	if state == nil {
@@ -1964,7 +1998,7 @@ func (n *NodeAbstractResourceInstance) evalApplyProvisioners(ctx EvalContext, st
 	}
 
 	// Call pre hook
-	diags = diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	diags = diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PreProvisionInstance(n.Addr, state.Value)
 	}))
 	if diags.HasErrors() {
@@ -1973,14 +2007,14 @@ func (n *NodeAbstractResourceInstance) evalApplyProvisioners(ctx EvalContext, st
 
 	// If there are no errors, then we append it to our output error
 	// if we have one, otherwise we just output it.
-	diags = diags.Append(n.applyProvisioners(ctx, state, when, provs))
+	diags = diags.Append(n.applyProvisioners(ctx, ectx, state, when, provs))
 	if diags.HasErrors() {
 		log.Printf("[TRACE] evalApplyProvisioners: %s provisioning failed, but we will continue anyway at the caller's request", n.Addr)
 		return diags
 	}
 
 	// Call post hook
-	return diags.Append(ctx.Hook(func(h Hook) (HookAction, error) {
+	return diags.Append(ectx.Hook(func(h Hook) (HookAction, error) {
 		return h.PostProvisionInstance(n.Addr, state.Value)
 	}))
 }
@@ -2008,14 +2042,14 @@ func filterProvisioners(config *configs.Resource, when configs.ProvisionerWhen) 
 }
 
 // applyProvisioners executes the provisioners for a resource.
-func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state *states.ResourceInstanceObject, when configs.ProvisionerWhen, provs []*configs.Provisioner) tfdiags.Diagnostics {
+func (n *NodeAbstractResourceInstance) applyProvisioners(ctx context.Context, ectx EvalContext, state *states.ResourceInstanceObject, when configs.ProvisionerWhen, provs []*configs.Provisioner) tfdiags.Diagnostics {
 	var diags tfdiags.Diagnostics
 
 	// this self is only used for destroy provisioner evaluation, and must
 	// refer to the last known value of the resource.
 	self := state.Value
 
-	var evalScope func(EvalContext, hcl.Body, cty.Value, *configschema.Block) (cty.Value, tfdiags.Diagnostics)
+	var evalScope func(context.Context, EvalContext, hcl.Body, cty.Value, *configschema.Block) (cty.Value, tfdiags.Diagnostics)
 	switch when {
 	case configs.ProvisionerWhenDestroy:
 		evalScope = n.evalDestroyProvisionerConfig
@@ -2035,12 +2069,12 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 		log.Printf("[TRACE] applyProvisioners: provisioning %s with %q", n.Addr, prov.Type)
 
 		// Get the provisioner
-		provisioner, err := ctx.Provisioner(prov.Type)
+		provisioner, err := ectx.Provisioner(prov.Type)
 		if err != nil {
 			return diags.Append(err)
 		}
 
-		schema, err := ctx.ProvisionerSchema(prov.Type)
+		schema, err := ectx.ProvisionerSchema(prov.Type)
 		if err != nil {
 			// This error probably won't be a great diagnostic, but in practice
 			// we typically catch this problem long before we get here, so
@@ -2049,7 +2083,7 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 			return diags
 		}
 
-		config, configDiags := evalScope(ctx, prov.Config, self, schema)
+		config, configDiags := evalScope(ctx, ectx, prov.Config, self, schema)
 		diags = diags.Append(configDiags)
 		if diags.HasErrors() {
 			return diags
@@ -2081,7 +2115,7 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 
 		if connBody != nil {
 			var connInfoDiags tfdiags.Diagnostics
-			connInfo, connInfoDiags = evalScope(ctx, connBody, self, connectionBlockSupersetSchema)
+			connInfo, connInfoDiags = evalScope(ctx, ectx, connBody, self, connectionBlockSupersetSchema)
 			diags = diags.Append(connInfoDiags)
 			if diags.HasErrors() {
 				return diags
@@ -2090,7 +2124,7 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 
 		{
 			// Call pre hook
-			err := ctx.Hook(func(h Hook) (HookAction, error) {
+			err := ectx.Hook(func(h Hook) (HookAction, error) {
 				return h.PreProvisionInstanceStep(n.Addr, prov.Type)
 			})
 			if err != nil {
@@ -2100,7 +2134,7 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 
 		// The output function
 		outputFn := func(msg string) {
-			ctx.Hook(func(h Hook) (HookAction, error) {
+			ectx.Hook(func(h Hook) (HookAction, error) {
 				h.ProvisionOutput(n.Addr, prov.Type, msg)
 				return HookActionContinue, nil
 			})
@@ -2119,7 +2153,7 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 		// provisioners ought not to be logging anyway.
 		if len(configMarks) > 0 {
 			outputFn = func(msg string) {
-				ctx.Hook(func(h Hook) (HookAction, error) {
+				ectx.Hook(func(h Hook) (HookAction, error) {
 					h.ProvisionOutput(n.Addr, prov.Type, "(output suppressed due to sensitive value in config)")
 					return HookActionContinue, nil
 				})
@@ -2135,7 +2169,7 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 		applyDiags := resp.Diagnostics.InConfigBody(prov.Config, n.Addr.String())
 
 		// Call post hook
-		hookErr := ctx.Hook(func(h Hook) (HookAction, error) {
+		hookErr := ectx.Hook(func(h Hook) (HookAction, error) {
 			return h.PostProvisionInstanceStep(n.Addr, prov.Type, applyDiags.Err())
 		})
 
@@ -2164,22 +2198,24 @@ func (n *NodeAbstractResourceInstance) applyProvisioners(ctx EvalContext, state 
 	return diags
 }
 
-func (n *NodeAbstractResourceInstance) evalProvisionerConfig(ctx EvalContext, body hcl.Body, self cty.Value, schema *configschema.Block) (cty.Value, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) evalProvisionerConfig(ctx context.Context, ectx EvalContext, body hcl.Body, self cty.Value, schema *configschema.Block) (cty.Value, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
-	forEach, forEachDiags := evaluateForEachExpression(n.Config.ForEach, ctx)
+	forEach, forEachDiags := evaluateForEachExpression(n.Config.ForEach, ectx)
 	diags = diags.Append(forEachDiags)
 
 	keyData := EvalDataForInstanceKey(n.ResourceInstanceAddr().Resource.Key, forEach)
 
-	config, _, configDiags := ctx.EvaluateBlock(body, schema, n.ResourceInstanceAddr().Resource, keyData)
+	_, span2 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.ectx.EvaluteBlock", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	config, _, configDiags := ectx.EvaluateBlock(body, schema, n.ResourceInstanceAddr().Resource, keyData)
+	span2.End()
 	diags = diags.Append(configDiags)
 
 	return config, diags
 }
 
 // during destroy a provisioner can only evaluate within the scope of the parent resource
-func (n *NodeAbstractResourceInstance) evalDestroyProvisionerConfig(ctx EvalContext, body hcl.Body, self cty.Value, schema *configschema.Block) (cty.Value, tfdiags.Diagnostics) {
+func (n *NodeAbstractResourceInstance) evalDestroyProvisionerConfig(ctx context.Context, ectx EvalContext, body hcl.Body, self cty.Value, schema *configschema.Block) (cty.Value, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 
 	// For a destroy-time provisioner forEach is intentionally nil here,
@@ -2188,7 +2224,7 @@ func (n *NodeAbstractResourceInstance) evalDestroyProvisionerConfig(ctx EvalCont
 	// destroy-time provisioners.
 	keyData := EvalDataForInstanceKey(n.ResourceInstanceAddr().Resource.Key, nil)
 
-	evalScope := ctx.EvaluationScope(n.ResourceInstanceAddr().Resource, nil, keyData)
+	evalScope := ectx.EvaluationScope(n.ResourceInstanceAddr().Resource, nil, keyData)
 	config, evalDiags := evalScope.EvalSelfBlock(body, self, schema, keyData)
 	diags = diags.Append(evalDiags)
 
@@ -2199,12 +2235,15 @@ func (n *NodeAbstractResourceInstance) evalDestroyProvisionerConfig(ctx EvalCont
 // send a nil config. The keyData information can be empty if the config is
 // nil, since it is only used to evaluate the configuration.
 func (n *NodeAbstractResourceInstance) apply(
-	ctx EvalContext,
+	ctx context.Context,
+	ectx EvalContext,
 	state *states.ResourceInstanceObject,
 	change *plans.ResourceInstanceChange,
 	applyConfig *configs.Resource,
 	keyData instances.RepetitionData,
 	createBeforeDestroy bool) (*states.ResourceInstanceObject, tfdiags.Diagnostics) {
+	ctx, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.apply", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	defer span.End()
 
 	var diags tfdiags.Diagnostics
 	if state == nil {
@@ -2219,7 +2258,9 @@ func (n *NodeAbstractResourceInstance) apply(
 		return state, diags
 	}
 
-	provider, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
+	_, span2 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.getProvider", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+	provider, providerSchema, err := getProvider(ectx, n.ResolvedProvider)
+	span2.End()
 	if err != nil {
 		return nil, diags.Append(err)
 	}
@@ -2235,7 +2276,9 @@ func (n *NodeAbstractResourceInstance) apply(
 	configVal := cty.NullVal(cty.DynamicPseudoType)
 	if applyConfig != nil {
 		var configDiags tfdiags.Diagnostics
-		configVal, _, configDiags = ctx.EvaluateBlock(applyConfig.Config, schema, nil, keyData)
+		_, span := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.ectx.EvaluteBlock", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
+		configVal, _, configDiags = ectx.EvaluateBlock(applyConfig.Config, schema, nil, keyData)
+		span.End()
 		diags = diags.Append(configDiags)
 		if configDiags.HasErrors() {
 			return nil, diags
@@ -2266,7 +2309,7 @@ func (n *NodeAbstractResourceInstance) apply(
 		return nil, diags
 	}
 
-	metaConfigVal, metaDiags := n.providerMetas(ctx)
+	metaConfigVal, metaDiags := n.providerMetas(ctx, ectx)
 	diags = diags.Append(metaDiags)
 	if diags.HasErrors() {
 		return nil, diags
@@ -2286,7 +2329,9 @@ func (n *NodeAbstractResourceInstance) apply(
 	// and we should not communicate with the provider. We do need to update
 	// the state with this new value, to ensure the sensitivity change is
 	// persisted.
+	_, span4 := otel.Tracer("github.com/hashicorp/terraform").Start(ctx, "NARI.Equals", trace.WithAttributes(attribute.String("path", ectx.Path().String())))
 	eqV := unmarkedBefore.Equals(unmarkedAfter)
+	span4.End()
 	eq := eqV.IsKnown() && eqV.True()
 	if change.Action == plans.Update && eq && !marksEqual(beforePaths, afterPaths) {
 		// Copy the previous state, changing only the value
@@ -2300,7 +2345,7 @@ func (n *NodeAbstractResourceInstance) apply(
 		return newState, diags
 	}
 
-	resp := provider.ApplyResourceChange(providers.ApplyResourceChangeRequest{
+	resp := provider.ApplyResourceChange(ctx, providers.ApplyResourceChangeRequest{
 		TypeName:       n.Addr.Resource.Resource.Type,
 		PriorState:     unmarkedBefore,
 		Config:         unmarkedConfigVal,
@@ -2529,11 +2574,11 @@ func (n *NodeAbstractResourceInstance) apply(
 	}
 }
 
-func (n *NodeAbstractResourceInstance) prevRunAddr(ctx EvalContext) addrs.AbsResourceInstance {
-	return resourceInstancePrevRunAddr(ctx, n.Addr)
+func (n *NodeAbstractResourceInstance) prevRunAddr(ectx EvalContext) addrs.AbsResourceInstance {
+	return resourceInstancePrevRunAddr(ectx, n.Addr)
 }
 
-func resourceInstancePrevRunAddr(ctx EvalContext, currentAddr addrs.AbsResourceInstance) addrs.AbsResourceInstance {
-	table := ctx.MoveResults()
+func resourceInstancePrevRunAddr(ectx EvalContext, currentAddr addrs.AbsResourceInstance) addrs.AbsResourceInstance {
+	table := ectx.MoveResults()
 	return table.OldAddr(currentAddr)
 }

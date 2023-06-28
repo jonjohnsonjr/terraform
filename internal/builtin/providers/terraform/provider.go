@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -117,7 +118,7 @@ func (p *Provider) PlanResourceChange(req providers.PlanResourceChangeRequest) p
 // ApplyResourceChange takes the planned state for a resource, which may
 // yet contain unknown computed values, and applies the changes returning
 // the final state.
-func (p *Provider) ApplyResourceChange(req providers.ApplyResourceChangeRequest) providers.ApplyResourceChangeResponse {
+func (p *Provider) ApplyResourceChange(_ context.Context, req providers.ApplyResourceChangeRequest) providers.ApplyResourceChangeResponse {
 	return applyDataStoreResourceChange(req)
 }
 

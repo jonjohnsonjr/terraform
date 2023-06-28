@@ -44,15 +44,15 @@ func (n *NodePlannableResourceInstanceOrphan) Name() string {
 }
 
 // GraphNodeExecutable
-func (n *NodePlannableResourceInstanceOrphan) Execute(_ context.Context, ctx EvalContext, op walkOperation) tfdiags.Diagnostics {
+func (n *NodePlannableResourceInstanceOrphan) Execute(ctx context.Context, ectx EvalContext, op walkOperation) tfdiags.Diagnostics {
 	addr := n.ResourceInstanceAddr()
 
 	// Eval info is different depending on what kind of resource this is
 	switch addr.Resource.Resource.Mode {
 	case addrs.ManagedResourceMode:
-		return n.managedResourceExecute(ctx)
+		return n.managedResourceExecute(ctx, ectx)
 	case addrs.DataResourceMode:
-		return n.dataResourceExecute(ctx)
+		return n.dataResourceExecute(ectx)
 	default:
 		panic(fmt.Errorf("unsupported resource mode %s", n.Config.Mode))
 	}
@@ -80,10 +80,10 @@ func (n *NodePlannableResourceInstanceOrphan) dataResourceExecute(ctx EvalContex
 	return nil
 }
 
-func (n *NodePlannableResourceInstanceOrphan) managedResourceExecute(ctx EvalContext) (diags tfdiags.Diagnostics) {
+func (n *NodePlannableResourceInstanceOrphan) managedResourceExecute(ctx context.Context, ectx EvalContext) (diags tfdiags.Diagnostics) {
 	addr := n.ResourceInstanceAddr()
 
-	oldState, readDiags := n.readResourceInstanceState(ctx, addr)
+	oldState, readDiags := n.readResourceInstanceState(ectx, addr)
 	diags = diags.Append(readDiags)
 	if diags.HasErrors() {
 		return diags
@@ -91,13 +91,13 @@ func (n *NodePlannableResourceInstanceOrphan) managedResourceExecute(ctx EvalCon
 
 	// Note any upgrades that readResourceInstanceState might've done in the
 	// prevRunState, so that it'll conform to current schema.
-	diags = diags.Append(n.writeResourceInstanceState(ctx, oldState, prevRunState))
+	diags = diags.Append(n.writeResourceInstanceState(ctx, ectx, oldState, prevRunState))
 	if diags.HasErrors() {
 		return diags
 	}
 	// Also the refreshState, because that should still reflect schema upgrades
 	// even if not refreshing.
-	diags = diags.Append(n.writeResourceInstanceState(ctx, oldState, refreshState))
+	diags = diags.Append(n.writeResourceInstanceState(ctx, ectx, oldState, refreshState))
 	if diags.HasErrors() {
 		return diags
 	}
@@ -109,13 +109,13 @@ func (n *NodePlannableResourceInstanceOrphan) managedResourceExecute(ctx EvalCon
 		// plan before apply, and may not handle a missing resource during
 		// Delete correctly.  If this is a simple refresh, Terraform is
 		// expected to remove the missing resource from the state entirely
-		refreshedState, refreshDiags := n.refresh(ctx, states.NotDeposed, oldState)
+		refreshedState, refreshDiags := n.refresh(ctx, ectx, states.NotDeposed, oldState)
 		diags = diags.Append(refreshDiags)
 		if diags.HasErrors() {
 			return diags
 		}
 
-		diags = diags.Append(n.writeResourceInstanceState(ctx, refreshedState, refreshState))
+		diags = diags.Append(n.writeResourceInstanceState(ctx, ectx, refreshedState, refreshState))
 		if diags.HasErrors() {
 			return diags
 		}
@@ -130,11 +130,11 @@ func (n *NodePlannableResourceInstanceOrphan) managedResourceExecute(ctx EvalCon
 	// to plan because there is no longer any state and it doesn't exist in the
 	// config.
 	if n.skipPlanChanges || oldState == nil || oldState.Value.IsNull() {
-		return diags.Append(n.writeResourceInstanceState(ctx, oldState, workingState))
+		return diags.Append(n.writeResourceInstanceState(ctx, ectx, oldState, workingState))
 	}
 
 	var change *plans.ResourceInstanceChange
-	change, destroyPlanDiags := n.planDestroy(ctx, oldState, "")
+	change, destroyPlanDiags := n.planDestroy(ctx, ectx, oldState, "")
 	diags = diags.Append(destroyPlanDiags)
 	if diags.HasErrors() {
 		return diags
@@ -148,14 +148,14 @@ func (n *NodePlannableResourceInstanceOrphan) managedResourceExecute(ctx EvalCon
 	// We might be able to offer an approximate reason for why we are
 	// planning to delete this object. (This is best-effort; we might
 	// sometimes not have a reason.)
-	change.ActionReason = n.deleteActionReason(ctx)
+	change.ActionReason = n.deleteActionReason(ectx)
 
-	diags = diags.Append(n.writeChange(ctx, change, ""))
+	diags = diags.Append(n.writeChange(ectx, change, ""))
 	if diags.HasErrors() {
 		return diags
 	}
 
-	return diags.Append(n.writeResourceInstanceState(ctx, nil, workingState))
+	return diags.Append(n.writeResourceInstanceState(ctx, ectx, nil, workingState))
 }
 
 func (n *NodePlannableResourceInstanceOrphan) deleteActionReason(ctx EvalContext) plans.ResourceInstanceChangeActionReason {

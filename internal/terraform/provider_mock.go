@@ -4,6 +4,7 @@
 package terraform
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -419,7 +420,7 @@ func (p *MockProvider) PlanResourceChange(r providers.PlanResourceChangeRequest)
 	return resp
 }
 
-func (p *MockProvider) ApplyResourceChange(r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
+func (p *MockProvider) ApplyResourceChange(_ context.Context, r providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
 	p.Lock()
 	p.ApplyResourceChangeCalled = true
 	p.ApplyResourceChangeRequest = r
